@@ -180,6 +180,7 @@
     "dscomments.storage.exportError": "Не удалось выгрузить комментарии: {msg}",
     "dscomments.storage.importBadFile": "Файл не похож на экспорт комментариев DS Comments.",
     "dscomments.storage.imported": "Импортировано записей: {n}",
+    "dscomments.storage.importSkipped": "Пропущено записей: {n} (превышен лимит размера или количества)",
     "dscomments.storage.importNoop": "Новых записей не найдено (все уже есть или новее).",
     "dscomments.storage.importError": "Не удалось импортировать комментарии: {msg}",
     "dscomments.quick.autoupdate": "Авто-обновление",

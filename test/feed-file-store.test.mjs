@@ -5,7 +5,8 @@ import '../test-helpers/stub-runtime.mjs';
 import { _resetFeedFileStore, _seedMirror, _flushWriteChain, _getLoadedKey, _STORE_VERSION,
     loadFeedStore, getFeedSlot, setFeedSlot, pruneOrphanedEntries, dropSlotEntry,
     clearFeedFile, feedStoreSnapshot, mergeImportedEntries, chatFileKey, hashKeyOf,
-    slotKeyOf, hashFingerprint, feedStoreDiagnostics, flushFeedStoreWrites, noteChatRenamed } from '../src/feed-file-store.js';
+    slotKeyOf, hashFingerprint, feedStoreDiagnostics, flushFeedStoreWrites, noteChatRenamed,
+    IMPORT_LIMITS } from '../src/feed-file-store.js';
 import { resetCtx } from '../test-helpers/stub-runtime.mjs';
 
 function makeMsg({ mes = 'ai reply', send_date = '2026-08-19T10:00:00.000Z', swipes = null, swipe_info = null, is_user = false } = {}) {
@@ -396,15 +397,40 @@ describe('clear and merge', () => {
         globalThis._stCtx.chatId = 'c1';
         await loadFeedStore();
         _seedMirror({ k1: { html: 'old', ts: 100 } });
-        const n = mergeImportedEntries({ entries: {
+        const { merged } = mergeImportedEntries({ entries: {
             k1: { html: 'newer', ts: 200 },
             k2: { html: 'added', ts: 50 },
             bad: { nothtml: true },
         } });
-        assert.equal(n, 2);
+        assert.equal(merged, 2);
         assert.equal(feedStoreSnapshot().entries.k1.html, 'newer');
         assert.equal(feedStoreSnapshot().entries.k2.html, 'added');
         assert.equal(feedStoreSnapshot().entries.bad, undefined);
+    });
+
+    test('mergeImportedEntries skips oversized html entries and reports the count', async () => {
+        globalThis._stCtx.chatId = 'c1';
+        await loadFeedStore();
+        const big = 'x'.repeat(IMPORT_LIMITS.maxEntryHtmlChars + 1);
+        const ok = 'y'.repeat(IMPORT_LIMITS.maxEntryHtmlChars);
+        const { merged, skipped } = mergeImportedEntries({ entries: {
+            big1: { html: big, ts: 200 },
+            ok1: { html: ok, ts: 200 },
+        } });
+        assert.equal(merged, 1, 'the at-limit entry is accepted');
+        assert.equal(skipped, 1, 'the over-limit entry is skipped and reported');
+        assert.equal(feedStoreSnapshot().entries.big1, undefined);
+        assert.equal(feedStoreSnapshot().entries.ok1.html, ok);
+    });
+
+    test('mergeImportedEntries stops accepting beyond maxEntries', async () => {
+        globalThis._stCtx.chatId = 'c1';
+        await loadFeedStore();
+        const entries = {};
+        for (let i = 0; i < IMPORT_LIMITS.maxEntries + 5; i++) entries[`k${i}`] = { html: `h${i}`, ts: 1 };
+        const { merged, skipped } = mergeImportedEntries({ entries });
+        assert.equal(merged, IMPORT_LIMITS.maxEntries);
+        assert.equal(skipped, 5);
     });
 });
 

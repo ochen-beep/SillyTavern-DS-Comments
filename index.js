@@ -773,6 +773,12 @@ async function handleExportFeeds() {
 
 async function handleImportFeeds(file) {
     try {
+        // Same cap as custom sound uploads: a multi-hundred-MB JSON would be
+        // parsed and merged into the mirror before any limit could react.
+        if (file.size > 5 * 1024 * 1024) {
+            toastr?.error(tr('File is too large. Maximum: 5 MB.', 'dscomments.file.tooLarge'));
+            return;
+        }
         const text = await file.text();
         const doc = JSON.parse(text);
         if (!doc || typeof doc !== 'object' || !doc.entries || typeof doc.entries !== 'object') {
@@ -782,12 +788,17 @@ async function handleImportFeeds(file) {
         if (!feedStoreSnapshot()?.loaded) {
             await loadFeedStore();
         }
-        const merged = mergeImportedEntries(doc);
+        const { merged, skipped } = mergeImportedEntries(doc);
         if (merged > 0) {
             recordEvent('log', `imported ${merged} feed entries from ${file.name}`);
             toastr?.success(tr('Imported entries: {n}', 'dscomments.storage.imported').replace('{n}', String(merged)));
+            if (skipped > 0) {
+                toastr?.warning(tr('Skipped entries: {n} (size or count limit).', 'dscomments.storage.importSkipped').replace('{n}', String(skipped)));
+            }
             // Refresh the panel if the current post gained an entry.
             updatePostIndicator();
+        } else if (skipped > 0) {
+            toastr?.warning(tr('Skipped entries: {n} (size or count limit).', 'dscomments.storage.importSkipped').replace('{n}', String(skipped)));
         } else {
             toastr?.info(tr('No new entries found (all already present or newer).', 'dscomments.storage.importNoop'));
         }
