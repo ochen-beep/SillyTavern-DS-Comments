@@ -81,7 +81,12 @@
 }
 
 /* ── Header (drag handle) ── */
-.dsc_header {
+/* ID-scoped (not .dsc_header): the same class also styles per-message headers
+   inside the feed (.dsc_message .dsc_header). Two equal-specificity rules used
+   to collide, with the later message rule breaking the window chrome
+   (height/padding/background/cursor) and the window rule leaking
+   touch-action:none into messages. */
+#dscHeader {
     height: var(--dsc-header-h);
     display: flex;
     align-items: center;
@@ -95,7 +100,7 @@
     flex-shrink: 0;
     touch-action: none;
 }
-.dsc_header:active { cursor: grabbing; }
+#dscHeader:active { cursor: grabbing; }
 /* Drop blur + big shadow during drag to avoid full per-frame recompute. */
 #dscWindow.dsc_dragging {
     backdrop-filter: none !important;
@@ -232,7 +237,9 @@
 @media (prefers-reduced-motion: reduce) { .dsc_message { animation: none; } }
 
 .dsc_body { min-width: 0; }
-.dsc_header { padding: 0; border: none; background: none; height: auto; display: flex; align-items: baseline; gap: 5px; cursor: default; }
+/* Scoped to .dsc_message — see the #dscHeader note above about the old
+   equal-specificity collision between window and message headers. */
+.dsc_message .dsc_header { padding: 0; border: none; background: none; height: auto; display: flex; align-items: baseline; gap: 5px; cursor: default; }
 .dsc_username {
     font-weight: 700; font-size: 1em; line-height: 1.35em;
     cursor: pointer; text-shadow: none !important;
@@ -329,7 +336,8 @@
 
 /* ── Quick settings menu ── */
 .dsc_qs_menu {
-    /* 3500: above our window + ST top chrome (3005), below modals (4000). */
+    /* 3500: above our window + ST top chrome (3005); native ST popups (9999)
+       stay above everything of ours. */
     position: fixed; z-index: 3500;
     min-width: 240px; max-width: 290px;
     padding: 6px; border-radius: 10px;
@@ -393,8 +401,8 @@
 
 /* ── Typography popover ── */
 .dsc_popover {
-    /* 3500 — same rationale as .dsc_qs_menu: clear of ST's top chrome (3005),
-       below ST modals (4000). See .dsc_qs_menu comment. */
+    /* 3500 — same rationale as .dsc_qs_menu: clear of ST's top chrome (3005);
+       native ST popups (9999) stay above. */
     position: fixed; z-index: 3500;
     min-width: 200px; max-width: 240px;
     padding: 8px; border-radius: 10px;
@@ -590,12 +598,14 @@
         flex: 1 !important; min-height: 0 !important; max-height: none !important;
         -webkit-overflow-scrolling: touch;
     }
-    #dscWindow.dsc_mobile .dsc_header { cursor: default !important; touch-action: pan-y !important; }
+    /* Direct child only: must match the window chrome, not per-message headers
+       deeper inside #dscFeed. */
+    #dscWindow.dsc_mobile > .dsc_header { cursor: default !important; touch-action: pan-y !important; }
 #dscWindow.dsc_mobile .dsc_resize { display: none !important; }
     #dscWindow.dsc_mobile .dsc_btn { min-width: 40px; min-height: 40px; font-size: 1.1em; }
 }
 
-/* ── dvh fallbacks + ST stacking fixes ── */
+/* ── dvh fallbacks ── */
 @supports not (height: 100dvh) {
     @media (max-width: 768px) {
         /* Older browsers without dvh: the main mobile rule's `100dvh` is invalid
@@ -605,4 +615,8 @@
         }
     }
 }
-.popup, #dialogue_popup, #shadow_popup { z-index: 4000 !important; }
+/* NOTE: no host popup z-index override. Native ST popups (#dialogue_popup,
+   #shadow_popup, .popup) sit at z-index 9999 in ST's own style.css — always
+   above this window (2999) and its menus (3500). A previous override here
+   forced them down to 4000, below ST's own 4001-4100 layers (character popup,
+   chat-select, drawer combos). */
