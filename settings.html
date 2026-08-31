@@ -1,0 +1,212 @@
+<div class="dsc_settings">
+    <!-- Primary enable toggle -->
+    <label class="dsc_toggle_row dsc_primary_enable">
+        <input type="checkbox" id="dsc_enabled" class="checkbox">
+        <span><b data-i18n="dscomments.settings.enable">Enable DS Comments</b></span>
+    </label>
+
+    <!-- ── Behavior and generation ── -->
+    <div class="dsc_section">
+        <button class="dsc_section_header" aria-expanded="false" type="button">
+            <span><i class="fa-solid fa-sliders fa-fw"></i> <span data-i18n="dscomments.settings.behavior">Behavior and generation</span></span>
+            <i class="fa-solid fa-chevron-down dsc_chevron"></i>
+        </button>
+        <div class="dsc_section_body" hidden>
+            <label class="dsc_toggle_row">
+                <input type="checkbox" id="dsc_autoupdate" class="checkbox">
+                <span><b data-i18n="dscomments.settings.autoupdate">Auto-update on AI messages</b></span>
+            </label>
+            <label class="dsc_toggle_row">
+                <input type="checkbox" id="dsc_nosave" class="checkbox">
+                <span><b data-i18n="dscomments.settings.nosave">No-save mode</b>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.nosaveHint">Keeps the latest feed for each chat in this browser only. It survives a reload but is not included in the chat or exports; a new generation replaces it.</small></span>
+            </label>
+
+            <div class="dsc_field_group">
+                <span class="dsc_field_label"><i class="fa-solid fa-plug fa-fw"></i> <span data-i18n="dscomments.settings.source">Source</span></span>
+                <div class="dsc_seg" id="dsc_source">
+                    <button class="dsc_seg_btn" data-dsc-src="profile" type="button" data-i18n="dscomments.settings.profile">Profile</button>
+                    <button class="dsc_seg_btn" data-dsc-src="custom" type="button" data-i18n="dscomments.settings.custom">Custom</button>
+                </div>
+            </div>
+
+            <div class="dsc_field_group" id="dsc_profile_group" hidden>
+                <span class="dsc_field_label"><i class="fa-solid fa-user-gear fa-fw"></i> <span data-i18n="dscomments.settings.profileTitle">Connection profile</span></span>
+                <!-- Profile name and model are shown together in the select options. -->
+                <select id="dsc_profile" class="dsc_select"><option value="" data-i18n="dscomments.settings.profileSelect">Select a connection profile</option></select>
+            </div>
+
+            <div id="dsc_custom_group" hidden>
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label"><i class="fa-solid fa-link fa-fw"></i> <span data-i18n="dscomments.settings.endpoint">Endpoint URL</span></span>
+                    <input type="url" id="dsc_endpoint" class="dsc_input" placeholder="https://api.example.com/v1">
+                </div>
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label"><i class="fa-solid fa-key fa-fw"></i> <span data-i18n="dscomments.settings.apiKey">API key</span></span>
+                    <input type="password" id="dsc_apikey" class="dsc_input" placeholder="sk-...">
+                </div>
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label"><i class="fa-solid fa-microchip fa-fw"></i> <span data-i18n="dscomments.settings.model">Model ID (optional)</span></span>
+                    <input type="text" id="dsc_model" class="dsc_input" placeholder="API default" data-i18n="[placeholder]dscomments.settings.modelPlaceholder">
+                </div>
+            </div>
+
+            <div class="dsc_field_group dsc_field_num">
+                <span class="dsc_field_label"><span data-i18n="dscomments.settings.count">Comments per generation</span></span>
+                <input type="number" id="dsc_count" class="dsc_input dsc_input_num" min="1" max="100" value="5">
+            </div>
+
+            <!-- Sound (nested) -->
+            <div class="dsc_sound_controls">
+                <label class="dsc_toggle_row dsc_sound_toggle"><input type="checkbox" id="dsc_sound_enable" class="checkbox">
+                    <span><b data-i18n="dscomments.settings.soundTitle">Notification sound</b></span></label>
+                <div class="dsc_field_group dsc_sound_volume_group">
+                    <span class="dsc_field_label"><span data-i18n="dscomments.settings.volume">Volume</span> <span id="dsc_sound_volume_val">30%</span></span>
+                    <input type="range" id="dsc_sound_volume" min="0" max="100" step="5" style="width:100%" disabled>
+                </div>
+            </div>
+            <div id="dsc_sound_body" hidden>
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.soundSelect">Sound</span>
+                    <select id="dsc_sound_select" class="dsc_select" style="width:100%"></select>
+                    <div style="display:flex;gap:6px;margin-top:6px">
+                        <label class="dsc_btn_action" style="cursor:pointer;flex:1">
+                            <input type="file" id="dsc_sound_file" accept=".ogg,.mp3,.wav,.m4a" hidden> ⬆ <span data-i18n="dscomments.action.upload">Upload</span>
+                        </label>
+                        <button id="dsc_sound_test" class="dsc_btn_action" type="button" style="flex:1">▶ <span data-i18n="dscomments.action.test">Test</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Display ── -->
+    <div class="dsc_section">
+        <button class="dsc_section_header" aria-expanded="false" type="button">
+            <span><i class="fa-solid fa-display fa-fw"></i> <span data-i18n="dscomments.settings.display">Display</span></span>
+            <i class="fa-solid fa-chevron-down dsc_chevron"></i>
+        </button>
+        <div class="dsc_section_body" hidden>
+            <div class="dsc_grid2">
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label"><i class="fa-solid fa-text-height fa-fw"></i> <span data-i18n="dscomments.settings.font">Font</span></span>
+                    <select id="dsc_fontfam" class="dsc_select">
+                        <option value="system" data-i18n="dscomments.font.system">System</option>
+                        <option value="inter" data-i18n="dscomments.font.inter">Inter</option>
+                        <option value="mono" data-i18n="dscomments.font.mono">Monospace</option>
+                        <option value="serif" data-i18n="dscomments.font.serif">Serif</option>
+                        <option value="comic" data-i18n="dscomments.font.comic">Comic</option>
+                    </select>
+                </div>
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label"><i class="fa-solid fa-font fa-fw"></i> <span data-i18n="dscomments.settings.fontSize">Size (px)</span></span>
+                    <input type="number" id="dsc_fontsize" class="dsc_input dsc_input_num" min="8" max="32" value="15">
+                </div>
+            </div>
+            <div class="dsc_field_group">
+                <span class="dsc_field_label"><i class="fa-solid fa-list-check fa-fw"></i> <span data-i18n="dscomments.settings.context">Context</span></span>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_hist" class="checkbox"> <span data-i18n="dscomments.settings.history">Chat history</span></label>
+                <div id="dsc_depth_group" hidden>
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.depth">Context depth</span>
+                    <input type="number" id="dsc_depth" class="dsc_input dsc_input_num" min="2" max="50" value="4">
+                </div>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_persona" class="checkbox"> <span data-i18n="dscomments.settings.persona">Persona</span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_chardesc" class="checkbox"> <span data-i18n="dscomments.settings.character">Character description</span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_lore_enable" class="checkbox"> <span data-i18n="dscomments.settings.lore">World information</span></label>
+                <div id="dsc_lore_group" hidden>
+                    <div class="dsc_seg" id="dsc_lore_mode">
+                        <button class="dsc_seg_btn" id="dsc_lore_mode_auto" data-dsc-lore-mode="automatic" type="button" data-i18n="dscomments.settings.loreAuto">Automatic</button>
+                        <button class="dsc_seg_btn" id="dsc_lore_mode_manual" data-dsc-lore-mode="manual" type="button" data-i18n="dscomments.settings.loreManual">Manual</button>
+                    </div>
+                    <div class="dsc_field_group" id="dsc_lore_scope_group" hidden>
+                        <label class="dsc_toggle_row"><input type="checkbox" id="dsc_lore_scope_attached" class="checkbox"> <span data-i18n="dscomments.settings.loreScopeAttached">Only lorebooks attached to this chat</span></label>
+                        <small class="dsc_hint" id="dsc_lore_scope_hint"></small>
+                    </div>
+                    <div class="dsc_field_group" id="dsc_lore_manual_group" hidden>
+                        <select id="dsc_lore_book" class="dsc_select"><option value="" data-i18n="dscomments.settings.loreSelect">Select a lorebook</option></select>
+                        <div id="dsc_lore_entries"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Prompt and jailbreak ── -->
+    <div class="dsc_section">
+        <button class="dsc_section_header" aria-expanded="false" type="button">
+            <span><i class="fa-solid fa-wrench fa-fw"></i> <span data-i18n="dscomments.settings.prompt">Prompt</span></span>
+            <i class="fa-solid fa-chevron-down dsc_chevron"></i>
+        </button>
+        <div class="dsc_section_body" hidden>
+            <div class="dsc_field_group">
+                <div style="display:flex;gap:6px;align-items:center">
+                    <select id="dsc_template" class="dsc_select" style="flex:1"></select>
+                    <button id="dsc_template_create" class="dsc_btn_action" type="button" title="Create new from a copy of the current template" data-i18n="dscomments.action.create;[title]dscomments.template.createTitle">Create</button>
+                </div>
+            </div>
+            <div class="dsc_field_group dsc_field_group_separated">
+                <span class="dsc_field_label"><span data-i18n="dscomments.settings.vibe">Character and tone</span></span>
+                <textarea id="dsc_template_text" class="dsc_prompt_textarea" spellcheck="false" placeholder="Loading template…" data-i18n="[placeholder]dscomments.template.loading"></textarea>
+                <div class="dsc_prompt_actions">
+                    <button id="dsc_template_save" class="dsc_btn_action" type="button" title="Save (for built-ins: create a new copy)" data-i18n="dscomments.action.save;[title]dscomments.template.saveTitle">Save</button>
+                    <button id="dsc_template_reset" class="dsc_btn_action" type="button" title="Reset vibe to main" data-i18n="dscomments.action.reset;[title]dscomments.template.resetTitle">Reset</button>
+                    <button id="dsc_template_del" class="dsc_btn_action" type="button" title="Delete" data-i18n="dscomments.action.delete;[title]dscomments.template.deleteTitle">Delete</button>
+                </div>
+            </div>
+
+            <div class="dsc_section-divider" style="height:1px;background:rgba(255,255,255,0.08);margin:10px 0"></div>
+
+            <!-- Jailbreak (nested) -->
+            <label class="dsc_toggle_row"><input type="checkbox" id="dsc_jb_enable" class="checkbox">
+                <span><b data-i18n="dscomments.settings.jailbreak">Jailbreak block</b></span></label>
+            <div id="dsc_jb_body" hidden>
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.role">Роль</span>
+                    <select id="dsc_jb_role" class="dsc_select"><option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option></select>
+                </div>
+                <div class="dsc_field_group dsc_field_group_separated">
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.jailbreakBlock">Jailbreak block</span>
+                    <textarea id="dsc_jb_text" class="dsc_prompt_textarea" rows="6" spellcheck="false"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Cache clearing ── -->
+    <div class="dsc_section">
+        <button class="dsc_section_header" aria-expanded="false" type="button">
+            <span><i class="fa-solid fa-trash fa-fw"></i> <span data-i18n="dscomments.settings.cache">Cache management</span></span>
+            <i class="fa-solid fa-chevron-down dsc_chevron"></i>
+        </button>
+        <div class="dsc_section_body" hidden>
+            <div class="dsc_field_group">
+                <button id="dsc_clear_all" class="dsc_btn_action" type="button" style="width:100%;background:rgba(240,71,71,0.12);color:#ff8080;border-color:rgba(240,71,71,0.25)" data-i18n="dscomments.settings.clearAll">Clear feed and all commentary cache</button>
+            </div>
+
+            <div class="dsc_section-divider" style="height:1px;background:rgba(255,255,255,0.08);margin:14px 0 10px"></div>
+
+            <label class="dsc_toggle_row">
+                <input type="checkbox" id="dsc_debug_mode" class="checkbox">
+                <span><b data-i18n="dscomments.settings.debug">Debug</b>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.debugHint">Records commentary restore/loss events in memory. Turn off before exporting to freeze the log.</small></span>
+            </label>
+            <div class="dsc_field_group" style="margin-top:8px">
+                <button id="dsc_dump_logs" class="dsc_btn_action" type="button" style="width:100%;background:rgba(120,180,255,0.12);color:#a0c4ff;border-color:rgba(120,180,255,0.25)">
+                    <i class="fa-solid fa-file-arrow-down fa-fw"></i> <span data-i18n="dscomments.settings.dumpLogs">Export logs (.json)</span>
+                </button>
+                <small class="dsc_hint" data-i18n="dscomments.debug.exportHint">The dump contains technical logs and metadata, without scene text, prompts, or model responses.</small>
+            </div>
+
+            <div class="dsc_section-divider" style="height:1px;background:rgba(255,255,255,0.08);margin:14px 0 10px"></div>
+
+            <div class="dsc_field_group">
+                <button id="dsc_export_feeds" class="dsc_btn_action" type="button" style="width:100%" data-i18n="dscomments.storage.export">Export chat comments</button>
+                <small class="dsc_hint" data-i18n="dscomments.storage.exportHint">Comments live on the server outside the chat file — export them to move to another device or as a backup.</small>
+                <button id="dsc_import_feeds" class="dsc_btn_action" type="button" style="width:100%" data-i18n="dscomments.storage.import">Import comments</button>
+                <input type="file" id="dsc_import_feeds_file" accept=".json,application/json" hidden>
+            </div>
+        </div>
+    </div>
+
+    <p class="dsc_version" style="text-align:center;opacity:0.4;font-size:0.8em;padding:8px">DS Comments v0.9.2</p>
+</div>

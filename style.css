@@ -1,0 +1,608 @@
+/* DS Comments — Theme-aware styles. Discord-aesthetic messages, theme-aware chrome.
+   Tokens: --SmartTheme* (ST), --sheldWidth, --topBarBlockSize. */
+
+:root {
+    /* Window background. Defaults to ST's translucent frosted tint
+       (--SmartThemeBlurTintColor) - the original behavior, kept for older
+       browsers. On transparent themes that tint's alpha is ~0, which made this
+       window see-through and the text unreadable; the @supports block below
+       upgrades it to the same hue at full opacity (opaque + still themed: light
+       on light themes, dark on dark) wherever relative color syntax exists. */
+    --dsc-bg:      var(--SmartThemeBlurTintColor, rgba(20, 20, 25, 0.88));
+    /* Overlay bg for popovers/menus/status. Defaults to the window bg; theme-sync.js
+       refines both to opaque, theme-aware values (and `--dsc-bg` itself) on init. */
+    --dsc-overlay-bg: var(--dsc-bg);
+    /* color-scheme hint for native form chrome (<select> arrow, autofill).
+       Fixed 'dark' as the CSS fallback; theme-sync.js flips it to 'light' on
+       light themes. */
+    --dsc-color-scheme: dark;
+    --dsc-border:  var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+    --dsc-text:    var(--SmartThemeBodyColor, #dcddde);
+    --dsc-accent:  var(--SmartThemeQuoteColor, #43b581);
+    --dsc-hover:   rgba(255, 255, 255, 0.10);
+    --dsc-radius:  10px;
+    --dsc-header-h: 44px;
+    --dsc-font-size: 15px;
+    --dsc-font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --dsc-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+/* Relative color syntax: force the theme tint's alpha to 1, keeping its hue ->
+   opaque + readable on transparent themes. Where `rgb(from ...)` is unsupported,
+   --dsc-bg keeps the translucent tint declared in :root above (original look).
+   This is the SECOND line of defense — theme-sync.js overrides both tokens
+   reliably on every browser via JS; this block only covers the gap before JS
+   init (and engines with relative-color support but no JS yet). */
+@supports (color: rgb(from white r g b)) {
+    :root {
+        --dsc-bg: rgb(from var(--SmartThemeBlurTintColor, rgba(20, 20, 25, 1)) r g b);
+        --dsc-overlay-bg: rgb(from var(--SmartThemeBlurTintColor, rgba(12, 14, 20, 1)) r g b);
+    }
+}
+
+/* ── Floating window ── */
+#dscWindow {
+    position: fixed;
+    /* Keep host panels and modals above the comments window. */
+    z-index: 2999;
+    display: flex;
+    flex-direction: column;
+    width: 380px;
+    height: 360px;
+    min-width: 240px;
+    min-height: 120px;
+    bottom: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 1px solid var(--dsc-border);
+    border-radius: var(--dsc-radius);
+    background: var(--dsc-bg);
+    /* No blur here on modern browsers: --dsc-bg is opaque, so a backdrop blur
+       would be invisible dead weight. Older browsers (no relative color syntax)
+       keep the original frosted blur via the @supports block below. */
+    box-shadow: var(--dsc-shadow);
+    overflow: visible;
+    text-shadow: none !important;
+    color: var(--dsc-text);
+    /* GPU opacity transition — never touches the transform owned by drag/mobile. */
+    transition: opacity 0.12s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+    #dscWindow { transition: none; }
+}
+/* Older browsers without relative color syntax: --dsc-bg stays translucent, so
+   restore the original frosted-glass blur. Modern browsers skip this (the opaque
+   bg makes a blur invisible) and avoid its per-frame cost. */
+@supports not (color: rgb(from white r g b)) {
+    #dscWindow {
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+}
+
+/* ── Header (drag handle) ── */
+.dsc_header {
+    height: var(--dsc-header-h);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--dsc-border);
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: var(--dsc-radius) var(--dsc-radius) 0 0;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+    touch-action: none;
+}
+.dsc_header:active { cursor: grabbing; }
+/* Drop blur + big shadow during drag to avoid full per-frame recompute. */
+#dscWindow.dsc_dragging {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--dsc-bg) !important;   /* solid bg so content stays readable */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4) !important;
+    transition: none;
+}
+.dsc_header_right { display: flex; align-items: center; gap: 4px; }
+.dsc_indicator {
+    flex: 1; text-align: center;
+    font-size: 0.82em; font-weight: 600;
+    color: var(--dsc-text); opacity: 0.85;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding: 3px 10px; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+}
+.dsc_indicator.dsc_pinned { color: var(--dsc-accent); }
+.dsc_indicator[hidden] { display: none !important; }
+
+/* ── Buttons ── */
+.dsc_btn {
+    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: transparent;
+    border-radius: 8px; cursor: pointer;
+    color: var(--dsc-text); opacity: 0.7;
+    font-size: 1em; transition: background 0.15s, opacity 0.15s, color 0.15s;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+}
+@media (hover: hover) {
+    .dsc_btn:hover { background: var(--dsc-hover); opacity: 1; }
+}
+
+/* ── Icons (Lucide sprite) ── */
+.dsc-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; pointer-events: none; }
+.dsc-icon-spin { animation: dsc_spin 0.9s linear infinite; }
+@keyframes dsc_spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .dsc-icon-spin { animation-duration: 2.4s; } }
+@media (prefers-reduced-motion: reduce) { .dsc_pull_indicator { transition: none; } }
+
+/* ── Status overlay card (generation progress) ── */
+.dsc_status_overlay {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    display: none; flex-direction: column; align-items: center; gap: 10px;
+    padding: 18px 24px; border-radius: 14px;
+    background: var(--dsc-overlay-bg);
+    border: 1px solid var(--dsc-border);
+    font-size: 0.9em; text-align: center; z-index: 100;
+    width: min(86%, 260px);
+}
+.dsc_status_overlay.active { display: flex; }
+.dsc_status_msg { color: var(--dsc-text); font-weight: 600; font-size: 1.02em; }
+.dsc_status_action {
+    background: rgba(240, 71, 71, 0.18); color: #ff8a8a;
+    border: 1px solid rgba(240, 71, 71, 0.45);
+    padding: 10px 28px; border-radius: 8px; cursor: pointer;
+    font-size: 0.95em; font-weight: 600;
+    width: 100%; min-height: 40px;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+}
+
+/* ── Feed (message list) ── */
+.dsc_feed {
+    flex: 1; min-height: 0;
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px 0;
+    font-size: var(--dsc-font-size);
+    font-family: var(--dsc-font-family);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.dsc_feed::-webkit-scrollbar { width: 6px; }
+.dsc_feed::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+
+/* ── Empty state ── */
+.dsc_empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 40px 20px; text-align: center;
+    color: var(--dsc-text); opacity: 0.85; min-height: 160px;
+}
+.dsc_empty .dsc-icon { opacity: 0.35; margin-bottom: 4px; }
+.dsc_empty_title { font-size: 1em; font-weight: 600; }
+.dsc_empty_sub { font-size: 0.85em; opacity: 0.6; max-width: 240px; }
+.dsc_empty_cta {
+    margin-top: 8px; padding: 9px 18px; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--dsc-accent); color: #fff; border: none;
+    font-size: 0.9em; font-weight: 600;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+    transition: filter 0.15s, transform 0.08s;
+}
+.dsc_empty_cta .dsc-icon { opacity: 1; margin-bottom: 0; }
+@media (hover: hover) { .dsc_empty_cta:hover { filter: brightness(1.1); } }
+.dsc_empty_cta:active { transform: scale(0.97); }
+
+/* ── Pull indicator (overscroll nav) ── */
+.dsc_pull_indicator {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    z-index: 50; padding: 5px 14px; border-radius: 14px;
+    background: var(--dsc-overlay-bg); border: 1px solid var(--dsc-border);
+    color: var(--dsc-text); font-size: 0.78em; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s;
+    white-space: nowrap;
+}
+.dsc_pull_indicator.dsc_pull_show { opacity: 0.9; }
+.dsc_pull_indicator.dsc_pull_ready { color: var(--dsc-accent); border-color: var(--dsc-accent); }
+/* Horizontal swipe variant (mobile post navigation) */
+.dsc_pull_indicator.dsc_swipe_h { opacity: 0.9; }
+.dsc_pull_indicator.dsc_swipe_next { letter-spacing: 0.3px; }
+.dsc_pull_indicator.dsc_swipe_prev { letter-spacing: 0.3px; }
+.dsc_pull_indicator.dsc_swipe_ready { color: var(--dsc-accent); border-color: var(--dsc-accent); }
+
+/* ── Messages (Discord aesthetic) ── */
+.dsc_message {
+    padding: 4px 14px 4px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-left: 2px solid transparent;
+    animation: dsc_fade_in 0.25s ease-out;
+    transition: background 0.1s, border-left-color 0.1s;
+    /* contain (not content-visibility:auto) — the latter breaks atBottom() by
+       inflating scrollHeight with placeholder-sized off-screen messages. */
+    contain: layout paint style;
+}
+.dsc_message:last-child { border-bottom: none; }
+@media (hover: hover) { .dsc_message:hover { background: rgba(255, 255, 255, 0.03); } }
+@keyframes dsc_fade_in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .dsc_message { animation: none; } }
+
+.dsc_body { min-width: 0; }
+.dsc_header { padding: 0; border: none; background: none; height: auto; display: flex; align-items: baseline; gap: 5px; cursor: default; }
+.dsc_username {
+    font-weight: 700; font-size: 1em; line-height: 1.35em;
+    cursor: pointer; text-shadow: none !important;
+    /* Static two-stop gradient — an infinite background-position shimmer
+       repainted every nick every frame. */
+    background-image: linear-gradient(100deg,
+        var(--dsc-nick-a, hsl(var(--dsc-nick-hue, 200), 80%, 65%)),
+        var(--dsc-nick-b, hsl(calc(var(--dsc-nick-hue, 200) + 35), 78%, 55%)),
+        var(--dsc-nick-a, hsl(var(--dsc-nick-hue, 200), 80%, 65%)));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+}
+/* Browsers without background-clip:text: fall back to a flat hue color. */
+@supports not ((background-clip: text) or (-webkit-background-clip: text)) {
+    .dsc_username {
+        background: none; color: hsl(var(--dsc-nick-hue, 200), 80%, 65%);
+    }
+}
+@media (hover: hover) { .dsc_username:hover { text-decoration: underline; } }
+.dsc_content {
+    color: var(--dsc-text); opacity: 0.95;
+    font-size: 0.95em; line-height: 1.5em;
+    white-space: pre-wrap; word-break: break-word; margin-top: 2px;
+    text-shadow: none !important;
+}
+.dsc_content strong { font-weight: 700; }
+.dsc_content em { color: var(--dsc-accent); font-style: italic; }
+.dsc_content code { background: rgba(0, 0, 0, 0.3); padding: 0 4px; border-radius: 3px; font-family: monospace; font-size: 0.9em; }
+.dsc_content del { opacity: 0.6; }
+
+/* Reply chain */
+.dsc_reply_bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 2px 0 2px 24px; margin-bottom: 2px;
+    position: relative; font-size: 0.8em;
+}
+.dsc_reply_line {
+    position: absolute; left: 6px; top: 50%;
+    width: 14px; height: 10px;
+    border-left: 2px solid rgba(255, 255, 255, 0.25);
+    border-top: 2px solid rgba(255, 255, 255, 0.25);
+    border-top-left-radius: 5px; transform: translateY(-50%);
+}
+.dsc_reply_avatar {
+    width: 16px; height: 16px; border-radius: 50%;
+    font-size: 9px; font-weight: 700; color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.dsc_reply_name { font-weight: 600; opacity: 0.9; flex-shrink: 0; }
+.dsc_reply_quote { color: var(--dsc-text); opacity: 0.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+
+/* reactions */
+.dsc_reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.dsc_reaction {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px 2px 6px; border-radius: 8px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: background 0.12s, border-color 0.12s, transform 0.08s;
+    user-select: none;
+}
+@media (hover: hover) { .dsc_reaction:hover { background: rgba(255, 255, 255, 0.10); border-color: rgba(255, 255, 255, 0.18); } }
+.dsc_reaction:active { transform: scale(0.92); }
+.dsc_reaction_emoji { font-size: 1.05em; line-height: 1; }
+.dsc_reaction_count { font-size: 0.78em; font-weight: 600; color: var(--dsc-text); opacity: 0.8; }
+
+/* status messages (error/cancel/info) */
+.dsc_status { text-align: center; padding: 24px 16px; color: var(--dsc-text); opacity: 0.7; font-size: 0.9em; }
+.dsc_status.dsc_error { color: #ff6b6b; opacity: 1; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.dsc_status.dsc_cancelled { color: var(--dsc-accent); opacity: 1; display: flex; align-items: center; justify-content: center; gap: 8px; }
+/* Long unbroken tokens (URLs/JSON in connection errors) would overflow the
+   centered flex row on both sides and get clipped by .dsc_feed's overflow-x.
+   Inherited overflow-wrap collapses the anonymous flex item's min-content so
+   the message wraps inside the window instead. */
+.dsc_status.dsc_error, .dsc_status.dsc_cancelled { overflow-wrap: anywhere; }
+
+/* ── Resize grip ── */
+.dsc_resize {
+    position: absolute; bottom: 0; right: 0;
+    width: 18px; height: 18px; cursor: se-resize;
+    border-radius: 0 0 var(--dsc-radius) 0; touch-action: none;
+}
+.dsc_resize::after {
+    content: ''; position: absolute; right: 3px; bottom: 3px;
+    width: 10px; height: 10px;
+    border-right: 2px solid rgba(255, 255, 255, 0.25);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0 0 2px 0;
+}
+.dsc_resize.resizing::after { border-color: var(--dsc-accent); }
+@media (hover: hover) { .dsc_resize:hover::after { border-color: var(--dsc-accent); } }
+
+/* ── Quick settings menu ── */
+.dsc_qs_menu {
+    /* 3500: above our window + ST top chrome (3005), below modals (4000). */
+    position: fixed; z-index: 3500;
+    min-width: 240px; max-width: 290px;
+    padding: 6px; border-radius: 10px;
+    background: var(--dsc-overlay-bg);
+    border: 1px solid var(--dsc-border);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    color: var(--dsc-text); font-size: 0.88em;
+    max-height: 75vh; overflow-y: auto;
+    scrollbar-width: thin;
+}
+@supports (max-height: 75dvh) { .dsc_qs_menu { max-height: 75dvh; } }
+.dsc_qs_group { padding: 2px 4px; }
+.dsc_qs_label { font-size: 0.78em; font-weight: 600; opacity: 0.6; padding: 6px 8px 4px; }
+.dsc_qs_divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 4px 8px; }
+.dsc_qs_empty { padding: 10px; text-align: center; opacity: 0.45; font-size: 0.85em; }
+.dsc_nav_select {
+    width: 100%; padding: 8px 10px; border-radius: 7px;
+    background: var(--dsc-overlay-bg);
+    color: var(--SmartThemeBodyColor, var(--dsc-text));
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.15));
+    font-size: 0.92em;
+    min-height: 38px;
+    color-scheme: var(--dsc-color-scheme);
+    appearance: none; -webkit-appearance: none;
+}
+.dsc_nav_select option {
+    background: var(--dsc-overlay-bg);
+    color: var(--SmartThemeBodyColor, #dcddde);
+}
+.dsc_chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 6px; }
+.dsc_chip {
+    min-width: 36px; min-height: 34px; padding: 4px 8px;
+    border-radius: 7px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.06); color: var(--dsc-text);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.85em; transition: background 0.12s, border-color 0.12s, color 0.12s;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+}
+@media (hover: hover) { .dsc_chip:hover { background: rgba(255, 255, 255, 0.12); } }
+.dsc_chip.dsc_selected { background: var(--dsc-accent); color: #fff; border-color: var(--dsc-accent); }
+.dsc_stepper { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; }
+.dsc_step_btn {
+    width: 34px; height: 34px; border-radius: 7px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.06); color: var(--dsc-text); border: none;
+    font-size: 1.1em; font-weight: 600;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+}
+@media (hover: hover) { .dsc_step_btn:hover { background: rgba(255, 255, 255, 0.12); } }
+.dsc_step_val {
+    min-width: 28px; min-height: 34px; padding: 0 12px;
+    text-align: center; font-weight: 700; font-size: 1em;
+    background: var(--dsc-accent); color: #fff;
+    border: none; border-radius: 7px; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+    transition: filter 0.12s;
+}
+@media (hover: hover) { .dsc_step_val:hover { filter: brightness(1.1); } }
+
+/* ── Typography popover ── */
+.dsc_popover {
+    /* 3500 — same rationale as .dsc_qs_menu: clear of ST's top chrome (3005),
+       below ST modals (4000). See .dsc_qs_menu comment. */
+    position: fixed; z-index: 3500;
+    min-width: 200px; max-width: 240px;
+    padding: 8px; border-radius: 10px;
+    background: var(--dsc-overlay-bg);
+    border: 1px solid var(--dsc-border);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    color: var(--dsc-text); font-size: 0.88em;
+}
+.dsc_pop_group { padding: 2px 4px; }
+.dsc_pop_label { font-size: 0.78em; font-weight: 600; opacity: 0.6; padding: 4px 8px; }
+.dsc_pop_divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 6px 8px; }
+
+/* ── Launcher button (in quick-reply bar) ── */
+.dsc_launcher {
+    display: inline-flex; align-items: center; justify-content: center;
+    /* #qr--bar is display:flex with flex-wrap:wrap. Be a fixed-size flex item so
+       the launcher never grows/shrinks or forces siblings to wrap on mobile. */
+    flex: 0 0 auto;
+    min-width: 40px; min-height: 36px; padding: 0 10px !important;
+    border-radius: 8px; cursor: pointer; user-select: none;
+    color: var(--SmartThemeBodyColor, rgba(255, 255, 255, 0.82));
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, filter 0.15s;
+    white-space: nowrap;
+}
+@media (hover: hover) { .dsc_launcher:hover { background: rgba(255, 255, 255, 0.12); } }
+.dsc_launcher.dsc_launcher_active {
+    background: color-mix(in srgb, var(--dsc-accent) 28%, rgba(255, 255, 255, 0.06));
+    border-color: color-mix(in srgb, var(--dsc-accent) 55%, transparent);
+    color: var(--dsc-accent);
+}
+.dsc_launcher.dsc_generating { animation: dsc_pulse 1.4s ease-in-out infinite; will-change: transform; }
+@keyframes dsc_pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .dsc_launcher.dsc_generating { animation: none; opacity: 0.8; will-change: auto; } }
+
+/* ── Settings panel (ST extensions_settings) ── */
+.dsc_settings .dsc_section {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin: 0;
+}
+.dsc_settings .dsc_section:first-child { border-top: none; }
+.dsc_settings .dsc_section_header[aria-expanded="true"] {
+    background: rgba(255, 255, 255, 0.03);
+}
+.dsc_settings .dsc_section_header {
+    appearance: none; -webkit-appearance: none; background: transparent;
+    border: none; border-radius: 0; outline: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; min-height: 40px; padding: 10px 12px; gap: 8px;
+    color: var(--dsc-accent); font-size: 0.82em; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.dsc_section_body { padding: 4px 4px 8px; }
+.dsc_toggle_row {
+    display: flex; align-items: flex-start; gap: 10px;
+    min-height: 38px; padding: 8px 6px; border-radius: 8px; cursor: pointer;
+    font-size: 0.9em; color: var(--dsc-text); transition: background 0.12s;
+    border: 1px solid transparent;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+/* Тумблеры внутри группы полей («Контекст»): без горизонтального отступа —
+   чекбоксы встают в одну колонку с чекбоксами верхнего уровня и контролами. */
+.dsc_field_group > .dsc_toggle_row { padding-left: 0; padding-right: 0; }
+@media (hover: hover) { .dsc_toggle_row:hover { background: rgba(255, 255, 255, 0.05); } }
+.dsc_field_group { margin: 8px 6px; }
+.dsc_field_group_separated { margin-top: 16px; }
+.dsc_field_label { display: block; font-size: 0.78em; font-weight: 600; opacity: 0.7; margin-bottom: 5px; }
+.dsc_sound_controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr); align-items: center; gap: 10px; }
+.dsc_sound_controls .dsc_toggle_row { min-width: 0; }
+.dsc_sound_volume_group { min-width: 0; }
+.dsc_sound_volume_group input:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 480px) { .dsc_sound_controls { grid-template-columns: 1fr; gap: 0; } }
+.dsc_input, .dsc_select {
+    width: 100%; padding: 8px 10px; border-radius: 7px;
+    background: rgba(255, 255, 255, 0.05); color: var(--dsc-text);
+    border: 1px solid rgba(255, 255, 255, 0.12); font-size: 0.9em;
+    /* Глобальный ST-стиль селектов задаёт height:min-content и margin-bottom:5px —
+       с ними строки «select + кнопка» разъезжаются по вертикали. Фиксируем высоту
+       и сбрасываем margin, чтобы все контролы были строго по 38px. */
+    height: 38px; margin: 0;
+}
+.dsc_input_num { max-width: 100px; }
+/* Узкая строка числового поля — иначе 2-значный инпут оставляет пустую дыру
+   справа на всю ширину секции. */
+.dsc_field_num { max-width: 100px; }
+.dsc_grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Segmented source picker */
+.dsc_seg { display: flex; gap: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 3px; }
+.dsc_seg_btn {
+    flex: 1; height: 32px; border: none; border-radius: 6px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--dsc-text); opacity: 0.7;
+    font-size: 0.85em; font-weight: 600; text-align: center;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s, opacity 0.12s;
+    appearance: none; -webkit-appearance: none;
+}
+.dsc_seg_btn.dsc_seg_active { background: var(--dsc-accent); color: #fff; opacity: 1; }
+.dsc_seg_btn:focus-visible {
+    outline: 2px solid var(--dsc-accent);
+    outline-offset: 2px;
+    opacity: 1;
+}
+
+/* Per-chat lore context */
+#dsc_lore_manual_group { margin: 8px 0; }
+#dsc_lore_entries { margin-top: 6px; }
+#dsc_lore_entries [data-role="lore-book"] {
+    border-top: 1px solid rgba(255, 255, 255, 0.08); padding: 2px 0;
+}
+#dsc_lore_entries [data-role="book-header"] {
+    display: flex; align-items: center; gap: 6px; min-height: 34px;
+}
+#dsc_lore_entries [data-role="book-name"] {
+    flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.86em; font-weight: 600;
+}
+#dsc_lore_entries [data-role="book-remove"] {
+    flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px;
+    background: transparent; color: var(--dsc-text); opacity: 0.6; cursor: pointer;
+    font-size: 14px; line-height: 1;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+    #dsc_lore_entries [data-role="book-remove"]:hover { opacity: 1; background: rgba(240, 71, 71, 0.15); }
+}
+#dsc_lore_entries [data-role="entry-list"] { padding-left: 10px; }
+#dsc_lore_entries [data-role="entry-list"] > label {
+    display: flex; align-items: flex-start; gap: 8px; min-width: 0;
+    min-height: 32px; padding: 6px 4px; cursor: pointer; font-size: 0.86em;
+}
+#dsc_lore_entries [data-role="entry-list"] input[type="checkbox"] {
+    flex: 0 0 16px; width: 16px; height: 16px; margin: 1px 0 0;
+}
+#dsc_lore_entries [data-role="entry-list"] label > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+#dsc_lore_entries [data-role="entry-vectorized"] {
+    flex: 0 0 auto; margin-left: auto; font-size: 0.82em; opacity: 0.55; line-height: 1;
+}
+#dsc_lore_entries [data-role="book-status"] {
+    display: block; padding: 6px 4px; font-size: 0.82em; opacity: 0.72; overflow-wrap: anywhere;
+}
+#dsc_lore_entries [data-role="missing-row"] { color: #ffb3b3; }
+
+/* Prompt editor */
+.dsc_prompt_textarea {
+    width: 100%; min-height: 220px; padding: 10px; border-radius: 8px;
+    background: rgba(0, 0, 0, 0.25); color: var(--dsc-text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-family: ui-monospace, 'Consolas', monospace; font-size: 0.82em; line-height: 1.5;
+    resize: vertical;
+}
+.dsc_prompt_actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+/* Flat action-button styling; metrics match .dsc_input/.dsc_select. */
+.dsc_btn_action {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 38px; padding: 8px 10px; border-radius: 7px; cursor: pointer;
+    background: rgba(255, 255, 255, 0.05); color: var(--dsc-text);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 0.85em; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    appearance: none; -webkit-appearance: none;
+}
+/* Кнопки действий шаблона: равная ширина (под ширину окна). */
+.dsc_prompt_actions .dsc_btn_action { flex: 1 1 0; min-width: 0; }
+/* Кнопка «Создать» в строке select — компактная, не растягивается. */
+.dsc_field_group > div .dsc_btn_action { flex: 0 0 auto; }
+/* Disabled action button — не активная для builtin шаблонов (Reset/Del/Dup) */
+.dsc_btn_action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Mobile / Termux (≤768px) — full screen, no drag/resize ── */
+@media (max-width: 768px) {
+    /* Mobile: full-screen window inset to clear ST's top bar and #send_form. */
+    #dscWindow.dsc_mobile {
+        position: fixed !important;
+        /* height !important anchors top→bottom; top+bottom+height over-constrains without it. */
+        top:    var(--dsc-st-top, 0px) !important;
+        left: 0 !important; right: 0 !important;
+        width: 100% !important; max-width: 100% !important;
+        height: calc(100dvh - var(--dsc-st-top, 0px) - var(--dsc-st-bottom, 0px)) !important;
+        transform: none !important;
+        border: none !important; border-radius: 0 !important;
+        box-shadow: none !important; padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        /* Drop blur on mobile — fullscreen panel recomputes it on every bg change. */
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+    #dscWindow.dsc_mobile .dsc_feed {
+        flex: 1 !important; min-height: 0 !important; max-height: none !important;
+        -webkit-overflow-scrolling: touch;
+    }
+    #dscWindow.dsc_mobile .dsc_header { cursor: default !important; touch-action: pan-y !important; }
+#dscWindow.dsc_mobile .dsc_resize { display: none !important; }
+    #dscWindow.dsc_mobile .dsc_btn { min-width: 40px; min-height: 40px; font-size: 1.1em; }
+}
+
+/* ── dvh fallbacks + ST stacking fixes ── */
+@supports not (height: 100dvh) {
+    @media (max-width: 768px) {
+        /* Older browsers without dvh: the main mobile rule's `100dvh` is invalid
+           here, so re-declare the explicit height using `100vh` instead. */
+        #dscWindow.dsc_mobile {
+            height: calc(100vh - var(--dsc-st-top, 0px) - var(--dsc-st-bottom, 0px)) !important;
+        }
+    }
+}
+.popup, #dialogue_popup, #shadow_popup { z-index: 4000 !important; }

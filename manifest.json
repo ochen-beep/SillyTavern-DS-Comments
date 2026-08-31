@@ -1,0 +1,23 @@
+{
+    "display_name": "DS Comments",
+    "loading_order": 1,
+    "dependencies": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "DS Comments",
+    "version": "0.9.2",
+    "homePage": "",
+    "auto_update": false,
+    "minimum_client_version": "1.18.0",
+    "i18n": {
+        "ru": "src/i18n/ru-ru.json",
+        "ru-ru": "src/i18n/ru-ru.json"
+    },
+    "hooks": {
+        "update": "onUpdate",
+        "enable": "onEnable",
+        "disable": "onDisable",
+        "activate": "onActivate",
+        "clean": "onClean"
+    }
+}
