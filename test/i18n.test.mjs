@@ -71,3 +71,30 @@ test('every dscomments key referenced from JS has a Russian translation', () => 
     const missing = [...used].filter(key => typeof ruRuLocale[key] !== 'string' || !ruRuLocale[key]);
     assert.deepEqual(missing, [], 'every key referenced from JS must exist in ru-ru.json');
 });
+
+test('every Russian locale key is referenced from code or settings.html (no dead keys)', () => {
+    // Collect every dscomments.* key-shaped token from index.js, src/**/*.js and
+    // settings.html (data-i18n attributes included). Dynamically built keys keep
+    // a fully-spelled static reference elsewhere — e.g. the dscomments.font.*
+    // family appears as quoted literals in core.js DSC_FONTS.
+    const used = new Set();
+    // One or more dot-separated segments after the prefix: two-segment keys
+    // like dscomments.quickSettings exist and must be matched too.
+    const collect = (text) => {
+        for (const m of text.matchAll(/dscomments\.[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)*/g)) {
+            used.add(m[0].replace(/\.$/, ''));
+        }
+    };
+    collect(readFileSync(path.join(root, 'index.js'), 'utf8'));
+    collect(html);
+    const walk = (dir) => {
+        for (const name of readdirSync(dir)) {
+            const full = path.join(dir, name);
+            if (statSync(full).isDirectory()) walk(full);
+            else if (name.endsWith('.js')) collect(readFileSync(full, 'utf8'));
+        }
+    };
+    walk(path.join(root, 'src'));
+    const dead = Object.keys(ruRuLocale).filter(k => !used.has(k));
+    assert.deepEqual(dead, [], `dead locale keys (remove or reference them): ${dead.join(', ')}`);
+});

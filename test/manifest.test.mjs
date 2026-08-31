@@ -26,8 +26,9 @@ test('manifest requires client version 1.18.0', () => {
 });
 
 test('manifest declares the Russian locale for SillyTavern (English is the base language)', () => {
+    // Only `ru-ru`: ST compares manifest i18n keys against the current locale
+    // string strictly, and no `ru` locale exists in ST (locales/ru-ru.json only).
     assert.deepEqual(manifest.i18n, {
-        ru: 'src/i18n/ru-ru.json',
         'ru-ru': 'src/i18n/ru-ru.json',
     });
 });
