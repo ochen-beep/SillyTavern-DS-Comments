@@ -92,6 +92,49 @@ describe('loadFeedStore', () => {
         assert.equal(getFeedSlot('0', 0)?.html, 'adopted');
     });
 
+    test('fresh guid + adopted fallback: content is copied to the guid file and the fallback is retired', async () => {
+        globalThis._stCtx.chatId = 'c-adopt';
+        globalThis._stCtx.characterId = 2;
+        // A live slot must hold the send_date, or GC would prune the entry.
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        const fallbackKey = hashKeyOf();
+        globalThis._stFiles[fallbackKey] = JSON.stringify({
+            v: _STORE_VERSION,
+            entries: { '2026-08-19T10:00:00.000Z': { v: _STORE_VERSION, html: 'adopted', ts: 1 } },
+        });
+        await loadFeedStore();
+        await _flushWriteChain();
+
+        const mainKey = _getLoadedKey();
+        assert.notEqual(mainKey, fallbackKey, 'a fresh guid file must have been minted');
+        const doc = JSON.parse(globalThis._stFiles[mainKey]);
+        assert.equal(doc.entries['2026-08-19T10:00:00.000Z'].html, 'adopted', 'content copied under the guid key');
+        assert.equal(globalThis._stFiles[fallbackKey], undefined, 'fallback file retired after the copy landed');
+    });
+
+    test('fallback retirement is skipped when the guid-file copy fails', async () => {
+        globalThis._stCtx.chatId = 'c-adopt-fail';
+        globalThis._stCtx.characterId = 3;
+        const fallbackKey = hashKeyOf();
+        globalThis._stFiles[fallbackKey] = JSON.stringify({
+            v: _STORE_VERSION,
+            entries: { '2026-08-19T10:00:00.000Z': { v: _STORE_VERSION, html: 'kept-here', ts: 1 } },
+        });
+
+        const origFetch = globalThis.fetch;
+        globalThis.fetch = async (url, init = {}) => {
+            if (String(url) === '/api/files/upload') return { ok: false, status: 500, text: async () => 'boom' };
+            return origFetch(url, init);
+        };
+        try {
+            await loadFeedStore();
+            await _flushWriteChain();
+        } finally {
+            globalThis.fetch = origFetch;
+        }
+        assert.ok(globalThis._stFiles[fallbackKey] !== undefined, 'fallback stays as the surviving store');
+    });
+
     test('network failure → empty mirror, session continues', async () => {
         globalThis._stCtx.chatId = 'c1';
         globalThis._stCtx.chat = [makeMsg()];

@@ -303,11 +303,18 @@ export async function loadFeedStore() {
 
     const { minted } = resolveGuid(ctx);
     const mainKey = chatFileKey(ctx);
+    // Fallback-keyed file probed while the guid is fresh (two tabs may mint
+    // different guids — whichever file exists wins the merge).
+    const fallbackKey = hashKeyOf(ctx);
     setStorageDiag('load', { loaded: false, result: 'started', file: mainKey, entryCount: 0, gcDropped: 0, error: null });
     let doc = null;
+    let fallbackDoc = null;
     try {
         doc = await readFile(ctx, mainKey);
-        if (!doc && minted) doc = await readFile(ctx, hashKeyOf(ctx));
+        if (!doc && minted) {
+            fallbackDoc = await readFile(ctx, fallbackKey);
+            doc = fallbackDoc;
+        }
     } catch (e) {
         warn('loadFeedStore: read failed — starting with empty mirror:', e?.message || e);
         recordEvent('warn', `event=feed_load chat=${ctx.chatId} file=${mainKey} result=error error=${e?.message || e}`);
@@ -317,6 +324,21 @@ export async function loadFeedStore() {
     _mirror = doc ? { entries: doc.entries } : emptyMirror();
     _loadedKey = mainKey;
     _loadedChatId = ctx.chatId;
+    // Retire the fallback file after its content is safely under the guid key.
+    // Copy first, delete only on copy success (chained, so the delete can never
+    // overtake the copy); on copy failure the fallback stays as the surviving
+    // store instead of leaving the new guid file empty.
+    if (minted && fallbackDoc) {
+        recordEvent('log', `event=feed_fallback_migrated chat=${ctx.chatId} from=${fallbackKey} to=${mainKey} entries=${Object.keys(_mirror.entries).length}`);
+        _writeChain = schedulePersist({ ctx, key: mainKey, mirror: _mirror })
+            .then(ok => {
+                if (!ok) return;
+                return deleteUserFile(fallbackKey).catch(cause => {
+                    warn('loadFeedStore: fallback feed file cleanup failed (kept):', cause?.message || cause);
+                });
+            })
+            .catch(() => {});
+    }
     if (minted) persistChatMetadata(ctx);
     migrateV1Posts(ctx);
     const pruned = pruneOrphanedEntries(ctx);
