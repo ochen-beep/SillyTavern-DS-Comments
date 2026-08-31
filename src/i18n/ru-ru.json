@@ -39,6 +39,8 @@
     "dscomments.sound.custom": "Свои",
     "dscomments.sound.missing": "файл не найден",
     "dscomments.command.toggleHelp": "Включить/выключить DS Comments",
+    "dscomments.command.helpMain": "/dscomments <toggle|regenerate|clear> — включить/выключить DS Comments, перегенерировать или очистить комментарии",
+    "dscomments.command.unknownAction": "Неизвестное действие «{a}». Доступно: toggle, regenerate, clear.",
     "dscomments.command.regenerateHelp": "Перегенерировать комментарии",
     "dscomments.command.clearHelp": "Очистить ленту и кэш",
     "dscomments.command.enabled": "DS Comments включён",

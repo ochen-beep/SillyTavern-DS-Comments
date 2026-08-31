@@ -46,7 +46,7 @@ test('slash registration succeeds once and is idempotent', () => {
     const { ctx, calls } = makeSlashContext();
     const controller = createPermanentRegistrationController({
         getContext: () => ctx,
-        buildSlashCommand: (SlashCommand) => ({ name: 'dscomments', SlashCommand }),
+        buildSlashCommand: (st) => ({ name: 'dscomments', st }),
         debugDefinitions: () => [],
         warn: () => {},
     });
@@ -55,6 +55,8 @@ test('slash registration succeeds once and is idempotent', () => {
     assert.equal(controller.ensureSlashCommandRegistered(), true);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].name, 'dscomments');
+    // The builder receives the full command surface object (Fix P0-1).
+    assert.equal(calls[0].st.SlashCommand, ctx.SlashCommand);
     assert.equal(controller.snapshot().slashRegistered, true);
 });
 

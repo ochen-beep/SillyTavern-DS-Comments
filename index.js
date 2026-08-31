@@ -56,6 +56,7 @@ import { initThemeSync, teardownThemeSync } from './src/ui/theme-sync.js';
 // directly on the "No save" toggle; this is safe — index→lifecycle is one-way.
 import { initLifecycle, onNoSaveModeChanged, createInitializationController } from './src/lifecycle.js';
 import { createPermanentRegistrationController } from './src/registration-lifecycle.js';
+import { buildDscommentsCommand } from './src/slash-commands.js';
 import { loadPinnedFeeds, flushPinnedPersist } from './src/pinned-store.js';
 import { loadEventLog, flushEventLog, clearEventLog, dumpEventLog, recordEvent } from './src/event-log.js';
 import { feedStoreSnapshot, mergeImportedEntries, loadFeedStore } from './src/feed-file-store.js';
@@ -845,44 +846,34 @@ async function populateSoundDropdown() {
 
 // ── Permanent SillyTavern registrations ──
 
-function buildSlashCommand(SlashCommand) {
-    return SlashCommand.fromProps({
-        name: 'dscomments',
-        subcommands: [
-            SlashCommand.fromProps({
-                name: 'toggle',
-                helpString: tr('Enable or disable DS Comments', 'dscomments.command.toggleHelp'),
-                callback: () => {
-                    state.settings.enabled = !state.settings.enabled;
-                    saveSettings();
-                    syncPanelToSettings();
-                    return state.settings.enabled ? tr('DS Comments enabled', 'dscomments.command.enabled') : tr('DS Comments disabled', 'dscomments.command.disabled');
-                },
-            }),
-            SlashCommand.fromProps({
-                name: 'regenerate',
-                helpString: tr('Regenerate commentary', 'dscomments.command.regenerateHelp'),
-                callback: () => {
-                    if (!state.settings.enabled) return tr('DS Comments disabled', 'dscomments.command.disabled');
-                    if (state.generationInProgress) return tr('Already generating…', 'dscomments.command.alreadyGenerating');
-                    generateFeed(null, null, true);
-                    return tr('Regenerating…', 'dscomments.command.regenerating');
-                },
-            }),
-            SlashCommand.fromProps({
-                name: 'clear',
-                helpString: tr('Clear saved DS Comments commentary', 'dscomments.command.clearHelp'),
-                callback: async () => {
-                    try {
-                        abortActiveGeneration();
-                        clearFeed();
-                        setFeedText('');
-                        updatePostIndicator();
-                        return tr('Feed and cache cleared', 'dscomments.cache.cleared');
-                    } catch (e) { return `${tr('Error: {msg}', 'dscomments.status.error').replace('{msg}', e.message)}`; }
-                },
-            }),
-        ],
+/**
+ * Action bodies for the flat /dscomments command. ST 1.18.0 has no
+ * `subcommands` support (see src/slash-commands.js), so the three former
+ * subcommand callbacks live here as plain handlers dispatched by argument.
+ */
+function buildSlashCommand(st) {
+    return buildDscommentsCommand(st, {
+        toggle: () => {
+            state.settings.enabled = !state.settings.enabled;
+            saveSettings();
+            syncPanelToSettings();
+            return state.settings.enabled ? tr('DS Comments enabled', 'dscomments.command.enabled') : tr('DS Comments disabled', 'dscomments.command.disabled');
+        },
+        regenerate: () => {
+            if (!state.settings.enabled) return tr('DS Comments disabled', 'dscomments.command.disabled');
+            if (state.generationInProgress) return tr('Already generating…', 'dscomments.command.alreadyGenerating');
+            generateFeed(null, null, true);
+            return tr('Regenerating…', 'dscomments.command.regenerating');
+        },
+        clear: async () => {
+            try {
+                abortActiveGeneration();
+                clearFeed();
+                setFeedText('');
+                updatePostIndicator();
+                return tr('Feed and cache cleared', 'dscomments.cache.cleared');
+            } catch (e) { return `${tr('Error: {msg}', 'dscomments.status.error').replace('{msg}', e.message)}`; }
+        },
     });
 }
 

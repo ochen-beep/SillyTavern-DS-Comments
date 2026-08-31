@@ -24,9 +24,9 @@ export function createPermanentRegistrationController({
     function ensureSlashCommandRegistered() {
         if (slashRegistered) return true;
         try {
-            const { SlashCommandParser, SlashCommand } = getContext() || {};
+            const { SlashCommandParser, SlashCommand, SlashCommandArgument, ARGUMENT_TYPE } = getContext() || {};
             if (!SlashCommandParser || !SlashCommand) return false;
-            SlashCommandParser.addCommandObject(buildSlashCommand(SlashCommand));
+            SlashCommandParser.addCommandObject(buildSlashCommand({ SlashCommand, SlashCommandArgument, ARGUMENT_TYPE }));
             slashRegistered = true;
             return true;
         } catch (cause) {
