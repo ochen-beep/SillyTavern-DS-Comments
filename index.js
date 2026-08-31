@@ -6,7 +6,7 @@
 
 import {
     state, MODULE_NAME, DISPLAY_NAME, META_KEY, LF_PROMPTS, LF_API_KEY, LF_SOUND, LF_PINNED, LF_EVENTLOG,
-    defaultSettings,
+    defaultSettings, FOLDER_NAME,
     loadSettings, saveSettings, flushSettings, getCtx, log, trace, warn, error, tr,
     setApiKey, flushApiKey, showConfirmModal, showInputModal, debounce, bumpGenerationEpoch,
     observePersistence, dumpRestoreLog, clearRestoreLog, collectRuntimeInfo,
@@ -216,7 +216,7 @@ async function init(isCancelled) {
     if (!_settingsPanelLoaded) {
         try {
             if (ctx.renderExtensionTemplateAsync) {
-                const settingsHtml = await ctx.renderExtensionTemplateAsync('third-party/DS Comments', 'settings');
+                const settingsHtml = await ctx.renderExtensionTemplateAsync(`third-party/${FOLDER_NAME}`, 'settings');
                 if (isCancelled()) return;
                 const container = document.createElement('div');
                 container.id = 'dsc_settings_container';

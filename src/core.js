@@ -8,6 +8,12 @@ const _url = new URL(import.meta.url);
 const _path = decodeURIComponent(_url.pathname);
 export const BASE_URL = _path.substring(1).replace(/\/src\/core\.js$/, '');
 
+// Folder name as ST addresses this extension (scripts/extensions/third-party/<name>).
+// Derived from BASE_URL so installs under any folder name work — a git install
+// names the folder after the repository (server-side: sanitize(basename(url, '.git'))),
+// not after display_name. Used for renderExtensionTemplateAsync paths.
+export const FOLDER_NAME = BASE_URL.split('/').filter(Boolean).pop() || 'DS Comments';
+
 // Chat-metadata key under ctx.chatMetadata where commentary cache lives.
 export const META_KEY = 'dscomments_commentary';
 
