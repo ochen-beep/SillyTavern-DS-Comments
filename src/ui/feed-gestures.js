@@ -185,10 +185,10 @@ export function initFeedGestures() {
     /** null | 'h' | 'v' — locked axis of the current touch */
     let axis = null;
     let indicator = null;
-// Wheel overscroll accumulation. Trackpads emit streams of small deltas that
-// sum past the threshold during an inertial flick into the edge, which fired a
-// spurious post jump on the original single-event gate.
-let wheelAccum = 0;
+    // Wheel overscroll accumulation. Trackpads emit streams of small deltas that
+    // sum past the threshold during an inertial flick into the edge, which fired a
+    // spurious post jump on the original single-event gate.
+    let wheelAccum = 0;
     let wheelEdge = null;   // 'top' | 'bottom' | null — which edge we're accumulating toward
     let wheelResetTimer = 0;
     let wheelGestureStart = 0;   // timestamp of the first edge event of the current gesture (dwell-gate)

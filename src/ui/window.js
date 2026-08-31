@@ -272,7 +272,7 @@ export function mountPanel() {
             </div>
         </div>
         <div class="dsc_status_overlay" id="dscStatusOverlay"></div>
-        <div class="dsc_feed" id="dscFeed" role="log" aria-live="polite"></div>
+        <div class="dsc_feed" id="dscFeed" role="log" aria-live="off"></div>
         <div class="dsc_resize" id="dscResize" aria-hidden="true"></div>
     `;
     document.body.appendChild(bar);

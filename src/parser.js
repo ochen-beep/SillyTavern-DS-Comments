@@ -129,7 +129,7 @@ function tryRepairJson(text) {
  * Find matching closing brace/bracket for the one at `start`.
  * Tracks string context and escape sequences.
  * @param {string} text
-  index of opening { or [
+ * @param {number} start index of opening { or [
  * @returns {number} index of matching close, or -1
  */
 function findMatchingBrace(text, start) {
@@ -159,7 +159,7 @@ function findMatchingBrace(text, start) {
  * Handles: premature ] / }, missing commas between top-level objects, mixed junk.
  * Each object is parsed independently — structural corruption elsewhere is irrelevant.
  *
-  pre-processed text (BOM stripped, code fences removed)
+ * @param {string} text pre-processed text (BOM stripped, code fences removed)
  * @returns {Array<object>|null}
  */
 function extractObjectsFromText(text) {

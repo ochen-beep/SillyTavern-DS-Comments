@@ -229,8 +229,8 @@ export async function populateProfiles() {
         const profiles = await getProfiles();
         if (req !== _profilesReq) return;   // superseded by a newer refresh
         // Details come from the same local Connection Manager list as the names, so
-// enrich every option at once: «Name · API · Model».
-// Order is preserved: collect labels first, then build <option>.
+        // enrich every option at once: «Name · API · Model».
+        // Order is preserved: collect labels first, then build <option>.
         const enriched = await Promise.all(profiles.map(async (p) => {
             const value = p.id || p.name;
             let label = p.name;

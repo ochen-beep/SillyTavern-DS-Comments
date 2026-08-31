@@ -344,7 +344,8 @@ function restoreFeedForCurrentContext() {
     const raised = Math.max(state.navLockUntil, Date.now() + 600);
     state.navLockUntil = raised;
     const restore = state.settings.noSaveMode ? showCurrentFeed() : restoreForCurrentChatPost();
-    observeRestore(restore).then(() => {
+    const wrapped = observeRestore(restore);
+    wrapped.then(() => {
         // Only trim if we still own the lock. A fast open->close->open
         // (or a scroll during restore) can raise navLockUntil above `raised`
         // after this .then captured `prevLock`; trimming to max(prevLock, now+250)
@@ -355,7 +356,7 @@ function restoreFeedForCurrentContext() {
             state.navLockUntil = Math.max(prevLock, Date.now() + 250);
         }
     });
-    return observeRestore(restore);
+    return wrapped;
 }
 
 function renderPanel() {
@@ -822,7 +823,7 @@ function refreshSoundDropdownHealth() {
     }).catch(() => { /* diagnostics only — never block the UI */ });
 }
 
-async function populateSoundDropdown() {
+function populateSoundDropdown() {
     const select = document.getElementById('dsc_sound_select');
     if (!select) return;
     select.innerHTML = '';

@@ -62,6 +62,8 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 
 saveMode files are named `dsc_<guid>.json` and are visible among the user's files / Data Bank. A missing or unreadable file is treated as an empty cache; new entries are simply created again. Renaming a chat keeps the GUID bound to the old file. Simultaneous writes from multiple tabs use last-write-wins.
 
+> **About "Clean extension data" (and deleting the extension):** it clears this browser's local stores (no-save feeds, prompt templates, API key, the event log), removes uploaded custom sounds, and deletes the comments file of the **current** chat. Comment files of *other* chats (`dsc_<guid>.json`) stay in the user files — SillyTavern's API does not let an extension enumerate them. Delete those manually via the Data Bank / user files if needed (the exact file name for a chat is shown by its comment-export's `file` field).
+
 Both modes sit behind a mode-agnostic adapter (`storeFeed`/`clearFeed`/`getCurrentFeedSource` in `src/cache.js`).
 
 ## Checkpoints and branches

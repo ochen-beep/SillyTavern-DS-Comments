@@ -171,7 +171,7 @@ export function beginGenerationEpoch() {
 
 /**
  * Is the snapshot token still the active epoch?
-  value returned by beginGenerationEpoch()
+ * @param {number} token value returned by beginGenerationEpoch()
  * @returns {boolean} false → the generation result must be discarded
  */
 export function isEpochCurrent(token) {

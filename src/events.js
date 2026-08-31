@@ -532,7 +532,7 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
             const result = await selectCommentaryTarget(String(msgId), swipeIdx, { source: 'swipe' });
             if (result.status === 'superseded') return;
             updatePostIndicator();
-            } catch (e) {
+        } catch (e) {
                 warn('MESSAGE_SWIPED handler error:', e);
                 recordEvent('error', `event=handler callback=MESSAGE_SWIPED chat=${getCtx()?.chatId || 'none'} error=${e?.message || e}`);
             }

@@ -246,6 +246,7 @@ function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwi
         loreIncluded: Boolean(context.lore),
         personaIncluded: Boolean(context.persona),
         characterIncluded: Boolean(context.character),
+        jailbreakIncluded: Boolean(parts.jailbreak),
     };
 }
 
@@ -399,9 +400,9 @@ function resolveImplicitGenerationTarget(forceRegenerate, ctx) {
  * ctx.substituteParams, then ST resolves {{random::}}, {{user}}, {{char}}.
  * No external user wrapper — blocks from buildChatHistory() are self-contained.
  *
-  chat[] index as string; null = auto-detect
-  swipe_id; null = auto-detect
-  if true, ignore cache
+ * @param {string|null} targetMsgId chat[] index as string; null = auto-detect
+ * @param {number|null} targetSwipeIdx swipe_id; null = auto-detect
+ * @param {boolean} forceRegenerate if true, ignore cache
  */
 export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate = false) {
     const settings = state.settings;
@@ -568,9 +569,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             return;
         }
         const { systemPrompt, userMessages, assistantPrefill } = assembled;
-        const jailbreakBlock = state.settings.enableJailbreakBlock
-            ? resolveSTMacro(String(state.settings.jailbreakText || '').trim())
-            : '';
+        const jailbreakBlock = assembled.jailbreakIncluded;
 
         // Prompt assembly summary (block sizes only, no content).
         trace('generateFeed: prompt built', {

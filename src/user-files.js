@@ -46,7 +46,9 @@ export async function deleteUserFile(name) {
         headers: stHeaders(),
         body: JSON.stringify({ path: `user/files/${name}` }),
     });
-    if (!res.ok && res.status !== 404) throw new Error(`delete failed: ${res.status}`);
+    if (!res.ok && res.status !== 404) {
+        throw new Error(`delete failed: ${res.status} ${await res.text().catch(() => '')}`);
+    }
 }
 
 /**

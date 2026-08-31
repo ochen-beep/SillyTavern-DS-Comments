@@ -22,7 +22,7 @@
 import { getCtx, warn } from '../core.js';
 
 /**
-  run once #send_form is available.
+ * @param {(sendForm: HTMLElement) => void} attach run once #send_form is available.
  * @param {{ onGiveUp?: () => void }} [options] - onGiveUp fires if APP_READY is
  *   unavailable and #send_form is absent (older/odd build); the extension
  *   remains functional (panel, feed) but the launcher/chrome won't attach

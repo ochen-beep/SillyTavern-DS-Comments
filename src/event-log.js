@@ -55,7 +55,7 @@ export function isEventLogLoaded() {
 /**
  * Record a significant event into the persistent log.
  * @param {'log'|'warn'|'error'} level
-  pre-formatted message (no objects; callers build the string).
+ * @param {string} msg pre-formatted message (no objects; callers build the string).
  */
 export function recordEvent(level, msg) {
     try {

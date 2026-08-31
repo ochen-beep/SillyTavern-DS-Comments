@@ -48,7 +48,7 @@ function isPlainPinnedEntry(v) {
 /**
  * Load persisted pinned feeds from localforage into the given Map.
  * Clears the Map first. Best-effort: a corrupt record is dropped with a warn.
-  state.pinnedFeeds
+ * @param {Map<string, {html:string, msgId:string, swipeIdx:number, ts:number}>} map state.pinnedFeeds
  * @param {{ currentChatId?: string|null }} [opts] — to flag the active chat in the log
  */
 export async function loadPinnedFeeds(map, { currentChatId = null } = {}) {
