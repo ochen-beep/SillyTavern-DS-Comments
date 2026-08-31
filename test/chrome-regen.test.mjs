@@ -15,7 +15,7 @@ import '../test-helpers/stub-runtime.mjs';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/core.js';
-import { makeRegenHandler } from '../src/ui/chrome.js';
+import { makeRegenHandler, setStatus } from '../src/ui/chrome.js';
 
 let feedHtml;
 beforeEach(() => {
@@ -35,6 +35,20 @@ beforeEach(() => {
         }
         : null;
 });
+
+function stubOverlay() {
+    let html = '';
+    const overlay = {
+        _classActive: false,
+        set innerHTML(v) { html = String(v ?? ''); },
+        get innerHTML() { return html; },
+        classList: { remove() {}, toggle(_c, on) { overlay._classActive = !!on; } },
+        querySelector: () => null,
+    };
+    const saved = document.getElementById;
+    document.getElementById = (id) => (id === 'dscStatusOverlay' ? overlay : saved(id));
+    return { overlay, restore: () => { document.getElementById = saved; }, get html() { return html; } };
+}
 
 test('regen delegates target resolution to the generator with a null target', () => {
     const calls = [];
@@ -71,4 +85,27 @@ test('regen while generating aborts the in-flight generation instead of starting
     assert.equal(aborted, true, 'the in-flight generation must be aborted');
     assert.equal(state.abortController, null);
     assert.equal(state.generationInProgress, false);
+});
+
+test('setStatus escapes the message and the action label (innerHTML injection regression)', () => {
+    const stub = stubOverlay();
+    try {
+        setStatus('<img src=x onerror=alert(1)>', { isAction: true, actionLabel: '<b>Cancel</b>' });
+        assert.match(stub.html, /&lt;img src=x onerror=alert\(1\)&gt;/, 'message must be entity-escaped');
+        assert.match(stub.html, /&lt;b&gt;Cancel&lt;\/b&gt;/, 'action label must be entity-escaped');
+        assert.ok(!/<img/.test(stub.html) && !/<b>/.test(stub.html), 'no raw tags may reach the overlay');
+    } finally {
+        stub.restore();
+    }
+});
+
+test('setStatus(\'\') hides the overlay and clears it', () => {
+    const stub = stubOverlay();
+    try {
+        setStatus('');
+        assert.equal(stub.overlay._classActive, false, 'active class removed');
+        assert.equal(stub.html, '', 'overlay content cleared');
+    } finally {
+        stub.restore();
+    }
 });

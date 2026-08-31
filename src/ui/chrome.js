@@ -5,7 +5,7 @@
  * status overlay (generation/error/cancel). Exports setStatus() consumed by generator.js.
  */
 
-import { state, tr } from '../core.js';
+import { state, tr, escapeHtml } from '../core.js';
 import { updatePostIndicator } from '../cache.js';
 import { showFeedHtml as setFeedText } from './feed-controller.js';
 import { iconHtml } from './icons.js';
@@ -14,6 +14,9 @@ import { iconHtml } from './icons.js';
 
 /**
  * Show/hide the status overlay pill.
+ * Message and action label are escaped: the overlay is innerHTML-built, and
+ * the contract must hold mechanically even if a future caller passes server
+ * error text instead of a constant.
  * @param {string} message  Empty string = hide.
  * @param {{isAction?: boolean, actionLabel?: string, isCancel?: boolean}} [opts]
  */
@@ -26,9 +29,9 @@ export function setStatus(message, opts = {}) {
         return;
     }
     const actionHtml = opts.isAction
-        ? `<button class="dsc_status_action" id="dscCancelGen" type="button">${opts.actionLabel || tr('Cancel', 'dscomments.action.cancel')}</button>`
+        ? `<button class="dsc_status_action" id="dscCancelGen" type="button">${escapeHtml(opts.actionLabel || tr('Cancel', 'dscomments.action.cancel'))}</button>`
         : '';
-    overlay.innerHTML = `<span class="dsc_status_msg">${message}</span>${actionHtml}`;
+    overlay.innerHTML = `<span class="dsc_status_msg">${escapeHtml(message)}</span>${actionHtml}`;
     overlay.classList.toggle('active', true);
     if (opts.isAction) {
         const btn = overlay.querySelector('#dscCancelGen');
