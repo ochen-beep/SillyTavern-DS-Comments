@@ -205,8 +205,10 @@ export const lastCustomEndpointDebug = {
     error: null,     // { message, status?, timestamp }
 };
 
-// Default endpoint timeout. Overridable in tests only.
-let _customEndpointTimeoutMs = 120_000;
+// Default endpoint timeout (5 min): requests are non-streaming, so this ceiling
+// covers the WHOLE generation — reasoning models and local backends can
+// legitimately take over 2 min. Overridable in tests only.
+let _customEndpointTimeoutMs = 300_000;
 export const _testSetCustomEndpointTimeout = (typeof process !== 'undefined' && process?.env?.NODE_TEST === '1')
     ? (ms) => { _customEndpointTimeoutMs = ms; }
     : undefined;
@@ -365,7 +367,8 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
         });
     } catch (e) {
         if (timedOut) {
-            const msg = tr('Endpoint did not respond within 120 s', 'dscomments.connection.timeoutHttp');
+            const msg = tr('Endpoint did not respond within {sec} s', 'dscomments.connection.timeoutHttp')
+                .replace('{sec}', Math.round(_customEndpointTimeoutMs / 1000));
             lastCustomEndpointDebug.error = { message: msg, timestamp: Date.now() };
             throw new Error(msg);
         }

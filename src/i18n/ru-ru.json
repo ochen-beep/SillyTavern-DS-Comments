@@ -13,7 +13,7 @@
     "dscomments.connection.profileResponse": "Профиль «{name}»: {msg}",
     "dscomments.connection.extractResponse": "Профиль «{name}» ответил, но не удалось извлечь текст из ответа.",
     "dscomments.connection.httpError": "Custom endpoint {msg}",
-    "dscomments.connection.timeoutHttp": "Эндпоинт не ответил за 120 с",
+    "dscomments.connection.timeoutHttp": "Эндпоинт не ответил за {sec} с",
     "dscomments.file.tooLarge": "Файл слишком большой. Максимум: 5 МБ.",
     "dscomments.template.saveAs": "Сохранить как новый шаблон:",
     "dscomments.template.createTitle": "Создать новый из копии текущего",

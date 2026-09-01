@@ -177,12 +177,12 @@ test('F7: hanging endpoint is aborted by the timeout with a localized error', as
     try {
         await assert.rejects(
             generateWithCustomEndpoint('sys', ['user'], '', null, 'https://api.example.com/v1', 'm'),
-            (e) => e.name !== 'AbortError' && /120/.test(e.message),
+            (e) => e.name !== 'AbortError' && /within 0 s/.test(e.message),
             'должна быть ошибка таймаута, не AbortError');
         assert.ok(lastCustomEndpointDebug.error, 'timeout captured in debug state');
     } finally {
         restore();
-        _testSetCustomEndpointTimeout(120_000);
+        _testSetCustomEndpointTimeout(300_000);
     }
 });
 
@@ -209,7 +209,7 @@ test('F7: user abort still surfaces as AbortError (cancel path preserved)', asyn
             'пользовательская отмена даёт AbortError, как до фикса');
     } finally {
         restore();
-        _testSetCustomEndpointTimeout(120_000);
+        _testSetCustomEndpointTimeout(300_000);
     }
 });
 
