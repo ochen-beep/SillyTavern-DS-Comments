@@ -595,7 +595,8 @@ function bindSettingsPanelEvents() {
         // FIELD_MAP path below.
         if (el.id === 'dsc_template_text' || el.id === 'dsc_jb_text') return;
         if (cfg.type === 'number' || cfg.type === 'range') {
-            syncNumericInput(el);
+            // live: no write-back into the field, so clearing/retyping works
+            syncNumericInput(el, { live: true });
         } else {
             state.settings[cfg.prop] = el.value;
         }

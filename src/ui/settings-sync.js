@@ -145,17 +145,25 @@ export function applyFontFamily(key) {
  * Read a numeric input, clamp/truncate it to the policy for its setting,
  * write the normalized value back to both state and the element, and apply
  * any immediate side effects (font size, volume label).
+ *
+ * Live mode (keystroke-by-keystroke from the `input` event) never touches the
+ * element's text: writing the normalized value back mid-edit makes an emptied
+ * field instantly repopulate with the fallback, so the user cannot clear and
+ * retype the number. Empty text in live mode is skipped entirely — the commit
+ * on `change` (blur/Enter) restores the fallback.
+ *
  * Returns the normalized integer or null if the field is not a known numeric
- * setting.
+ * setting (or, in live mode, if the user has it cleared right now).
  */
-export function syncNumericInput(el) {
+export function syncNumericInput(el, { live = false } = {}) {
     const cfg = FIELD_MAP[el.id];
     if (!cfg || (cfg.type !== 'number' && cfg.type !== 'range')) return null;
     const rule = NUMERIC_SETTINGS[cfg.prop];
     if (!rule) return null;
+    if (live && String(el.value).trim() === '') return null;
     const v = normalizeFiniteNumber(el.value, rule);
     state.settings[cfg.prop] = v;
-    el.value = String(v);
+    if (!live) el.value = String(v);
     if (cfg.prop === 'fontSize') applyFontSize(v);
     if (cfg.prop === 'soundVolume') {
         const lbl = document.getElementById('dsc_sound_volume_val');

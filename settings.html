@@ -14,19 +14,19 @@
         <div class="dsc_section_body" hidden>
             <label class="dsc_toggle_row">
                 <input type="checkbox" id="dsc_autoupdate" class="checkbox">
-                <span><b data-i18n="dscomments.settings.autoupdate">Auto-update on AI messages</b></span>
+                <span><b data-i18n="dscomments.settings.autoupdate">Auto-generate for the latest {{char}} message</b></span>
             </label>
             <label class="dsc_toggle_row">
                 <input type="checkbox" id="dsc_nosave" class="checkbox">
                 <span><b data-i18n="dscomments.settings.nosave">No-save mode</b>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.nosaveHint">Keeps the latest feed for each chat in this browser only. It survives a reload but is not included in the chat or exports; a new generation replaces it.</small></span>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.nosaveHint">Comments are not stored; the feed updates manually or when a message generation finishes (recommended).</small></span>
             </label>
 
             <div class="dsc_field_group">
                 <span class="dsc_field_label"><i class="fa-solid fa-plug fa-fw"></i> <span data-i18n="dscomments.settings.source">Source</span></span>
                 <div class="dsc_seg" id="dsc_source">
                     <button class="dsc_seg_btn" data-dsc-src="profile" type="button" data-i18n="dscomments.settings.profile">Profile</button>
-                    <button class="dsc_seg_btn" data-dsc-src="custom" type="button" data-i18n="dscomments.settings.custom">Custom</button>
+                    <button class="dsc_seg_btn" data-dsc-src="custom" type="button" data-i18n="dscomments.settings.custom">Direct</button>
                 </div>
             </div>
 
@@ -93,8 +93,13 @@
                     <select id="dsc_fontfam" class="dsc_select">
                         <option value="system" data-i18n="dscomments.font.system">System</option>
                         <option value="inter" data-i18n="dscomments.font.inter">Inter</option>
+                        <option value="verdana" data-i18n="dscomments.font.verdana">Verdana</option>
+                        <option value="trebuchet" data-i18n="dscomments.font.trebuchet">Trebuchet</option>
+                        <option value="narrow" data-i18n="dscomments.font.narrow">Narrow</option>
                         <option value="mono" data-i18n="dscomments.font.mono">Monospace</option>
-                        <option value="serif" data-i18n="dscomments.font.serif">Serif</option>
+                        <option value="serif" data-i18n="dscomments.font.serif">Georgia</option>
+                        <option value="palatino" data-i18n="dscomments.font.palatino">Palatino</option>
+                        <option value="script" data-i18n="dscomments.font.script">Handwritten</option>
                         <option value="comic" data-i18n="dscomments.font.comic">Comic</option>
                     </select>
                 </div>

@@ -270,6 +270,35 @@ describe('syncNumericInput', () => {
         assert.equal(countEl.value, '5');
     });
 
+    test('live mode: cleared field stays empty and state is untouched', () => {
+        state.settings.userCount = 50;
+        const countEl = makeInput('dsc_count', '');
+        assert.equal(syncNumericInput(countEl, { live: true }), null);
+        assert.equal(countEl.value, '', 'empty field must not be refilled mid-edit');
+        assert.equal(state.settings.userCount, 50, 'state keeps the last valid value');
+    });
+
+    test('live mode: valid keystrokes update state without writing back', () => {
+        // Retyping 50 → 25: clear, "2", "25"; commit happens on change (blur).
+        const countEl = makeInput('dsc_count', '');
+        assert.equal(syncNumericInput(countEl, { live: true }), null);
+        countEl.value = '2';
+        assert.equal(syncNumericInput(countEl, { live: true }), 2);
+        assert.equal(countEl.value, '2', 'live mode must not rewrite the element');
+        countEl.value = '25';
+        assert.equal(syncNumericInput(countEl, { live: true }), 25);
+        assert.equal(state.settings.userCount, 25);
+        // Commit on blur: value is finalized in the element too.
+        assert.equal(syncNumericInput(countEl), 25);
+        assert.equal(countEl.value, '25');
+    });
+
+    test('live mode: empty field on change still restores the fallback', () => {
+        const countEl = makeInput('dsc_count', '');
+        assert.equal(syncNumericInput(countEl), 5);
+        assert.equal(countEl.value, '5');
+    });
+
     test('ignores non-numeric and unknown fields', () => {
         const textEl = makeInput('dsc_endpoint', 'http://example.com');
         assert.equal(syncNumericInput(textEl), null);

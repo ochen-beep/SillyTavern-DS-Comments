@@ -492,9 +492,11 @@
     height: 38px; margin: 0;
 }
 .dsc_input_num { max-width: 100px; }
-/* Узкая строка числового поля — иначе 2-значный инпут оставляет пустую дыру
-   справа на всю ширину секции. */
-.dsc_field_num { max-width: 100px; }
+/* Строка «Комментариев на одну генерацию»: метка и поле в один ряд на всю
+   ширину секции — подпись не сжимается под 100px, поле прижато вправо. */
+.dsc_field_num { display: flex; align-items: center; gap: 10px; }
+.dsc_field_num .dsc_field_label { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.dsc_field_num .dsc_input_num { flex: 0 0 84px; max-width: 84px; }
 .dsc_grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* Segmented source picker */

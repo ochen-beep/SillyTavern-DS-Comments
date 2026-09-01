@@ -347,12 +347,19 @@ export function normalizeNumericSettings(settings) {
 }
 
 // ── Fonts ──
+// All stacks are system-installed fonts with Cyrillic coverage — no network
+// fetches. Missing families on a given OS fall through to the next entry.
 export const DSC_FONTS = {
-    system: { label: 'System',    i18nKey: 'dscomments.font.system', value: "system-ui, -apple-system, 'Segoe UI', sans-serif" },
-    inter:  { label: 'Inter',     i18nKey: 'dscomments.font.inter', value: "'Inter', 'Noto Sans', 'Segoe UI', sans-serif" },
-    mono:   { label: 'Monospace', i18nKey: 'dscomments.font.mono', value: "'Consolas', 'Courier New', monospace" },
-    serif:  { label: 'Serif',     i18nKey: 'dscomments.font.serif', value: "Georgia, 'Times New Roman', serif" },
-    comic:  { label: 'Comic',     i18nKey: 'dscomments.font.comic', value: "'Comic Sans MS', 'Chalkboard SE', cursive" },
+    system:    { label: 'System',      i18nKey: 'dscomments.font.system',    value: "system-ui, -apple-system, 'Segoe UI', sans-serif" },
+    inter:     { label: 'Inter',       i18nKey: 'dscomments.font.inter',     value: "'Inter', 'Noto Sans', 'Segoe UI', sans-serif" },
+    verdana:   { label: 'Verdana',     i18nKey: 'dscomments.font.verdana',   value: "'Verdana', 'DejaVu Sans', sans-serif" },
+    trebuchet: { label: 'Trebuchet',   i18nKey: 'dscomments.font.trebuchet', value: "'Trebuchet MS', 'DejaVu Sans', sans-serif" },
+    narrow:    { label: 'Narrow',      i18nKey: 'dscomments.font.narrow',    value: "'Arial Narrow', 'PT Sans Narrow', 'Liberation Sans Narrow', sans-serif" },
+    mono:      { label: 'Monospace',   i18nKey: 'dscomments.font.mono',      value: "'Consolas', 'Courier New', monospace" },
+    serif:     { label: 'Georgia',     i18nKey: 'dscomments.font.serif',     value: "Georgia, 'Times New Roman', serif" },
+    palatino:  { label: 'Palatino',    i18nKey: 'dscomments.font.palatino',  value: "'Palatino Linotype', 'Book Antiqua', Palatino, serif" },
+    script:    { label: 'Handwritten', i18nKey: 'dscomments.font.script',    value: "'Segoe Script', 'Comic Sans MS', cursive" },
+    comic:     { label: 'Comic',       i18nKey: 'dscomments.font.comic',     value: "'Comic Sans MS', 'Chalkboard SE', cursive" },
 };
 
 // ── Settings Persistence ──
