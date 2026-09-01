@@ -44,6 +44,9 @@ export const defaultSettings = Object.freeze({
     customEndpoint: '',
     customModel: '',
 
+    // window invocation control: 'bar' (quick-reply bar button) | 'floating' (draggable FAB) | 'both'
+    launcherMode: 'bar',
+
     // count + font (feed rendering)
     userCount: 5,                     // → {{count}}
     fontFamily: 'system',
@@ -386,6 +389,9 @@ export async function loadSettings() {
     // Normalize source enum ('main API' removed — migration of old settings)
     if (!['profile', 'custom'].includes(state.settings.apiSource)) {
         state.settings.apiSource = defaultSettings.apiSource;
+    }
+    if (!['bar', 'floating', 'both'].includes(state.settings.launcherMode)) {
+        state.settings.launcherMode = defaultSettings.launcherMode;
     }
     if (!state.settings.soundFiles) state.settings.soundFiles = {};
     if (!state.settings.soundId) state.settings.soundId = 'default';

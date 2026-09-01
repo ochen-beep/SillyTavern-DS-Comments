@@ -25,6 +25,7 @@ const FIELD_MAP = {
     dsc_chardesc:       { prop: 'includeCharacterDescription', type: 'checkbox' },
     dsc_fontfam:        { prop: 'fontFamily',                  type: 'select' },
     dsc_fontsize:       { prop: 'fontSize',                    type: 'number' },
+    dsc_launcher_mode:  { prop: 'launcherMode',                type: 'select' },
     dsc_template:       { prop: 'promptTemplate',              type: 'select' },
     dsc_jb_enable:      { prop: 'enableJailbreakBlock',        type: 'checkbox' },
     dsc_jb_role:        { prop: 'jailbreakRole',               type: 'select' },

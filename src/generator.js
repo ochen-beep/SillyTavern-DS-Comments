@@ -469,8 +469,11 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
     // epoch bump makes isEpochCurrent() return false and we discard the result.
     const epoch = beginGenerationEpoch();
 
-    const launcherBtn = document.getElementById('dsc_launcher');
-    if (launcherBtn) launcherBtn.classList.add('dsc_generating');
+    // Pulse every launcher control (QR-bar button + floating FAB) during generation.
+    const launcherEls = ['dsc_launcher', 'dsc_fab']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+    for (const el of launcherEls) el.classList.add('dsc_generating');
     setFeedText('');   // clear feed → empty-state renders blank (generating) instead of CTA
         setStatus(tr('Generation in progress', 'dscomments.status.generating'), { isAction: true, actionLabel: tr('Cancel', 'dscomments.action.cancel') });
     syncRegenVisual();   // ⟳ → spinner (Lucide)
@@ -702,7 +705,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         // chat-change abort (owner already null - no newer gen owns the UI).
         // Skip only when a different generation has taken ownership.
         if (state.generationOwner === null) {
-            if (launcherBtn) launcherBtn.classList.remove('dsc_generating');
+            for (const el of launcherEls) el.classList.remove('dsc_generating');
             setStatus('');
             syncRegenVisual();
         }

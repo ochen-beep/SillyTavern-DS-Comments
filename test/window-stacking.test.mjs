@@ -50,3 +50,14 @@ test('no bare .dsc_header rules (P1-2 window-vs-message collision regression)', 
     assert.match(css, /\.dsc_message \.dsc_header\s*\{/, 'message header rule is scoped to .dsc_message');
     assert.match(css, /#dscWindow\.dsc_mobile > \.dsc_header/, 'mobile rule targets the window chrome only (direct child)');
 });
+
+test('floating launcher layers above the window, below popovers (FAB toggle contract)', async () => {
+    const css = await readFile(stylePath, 'utf8');
+    const rule = css.match(/\.dsc_fab\s*\{([\s\S]*?)\n\}/);
+    assert.ok(rule, '.dsc_fab rule should exist');
+    // 3100: clickable over the mobile fullscreen window (2999) — the FAB is the
+    // panel's only toggle — while popovers (3500) and native ST popups (9999)
+    // stay above it.
+    assert.match(rule[1], /z-index:\s*3100;/, '.dsc_fab should remain at z-index 3100');
+    assert.match(css, /\.dsc_fab\.dsc_fab_active\s*\{/, 'active FAB state rule should exist (never hides while the panel is open)');
+});

@@ -29,6 +29,7 @@ import { deleteUserFile } from './src/user-files.js';
 import {
     mountPanel, removePanel, isPanelVisible, syncPanelVisibility, initViewportSync, teardownWindowRuntime, isMobileViewport,
 } from './src/ui/window.js';
+import { ensureFloatingLauncher, removeFloatingLauncher } from './src/ui/floating-launcher.js';
 import {
     bindChromeHandlers, syncRegenVisual, setStatus, makeRegenHandler,
 } from './src/ui/chrome.js';
@@ -424,27 +425,43 @@ export function ensureLauncher() {
     if (!state.settings.enabled) {
         if (existing) existing.remove();
         document.body.classList.remove('dsc-launcher-mounted');
+        removeFloatingLauncher();
         return null;
     }
-    const host = getLauncherHost();
-    if (!host) { document.body.classList.remove('dsc-launcher-mounted'); return null; }
-    let btn = existing;
-    if (!btn) {
-        btn = document.createElement('div');
-        btn.id = 'dsc_launcher';
-        btn.className = 'qr--button menu_button interactable dsc_launcher';
-        btn.tabIndex = 0;
-        btn.setAttribute('role', 'button');
-        btn.setAttribute('aria-label', 'DS Comments');
-        btn.innerHTML = '<span aria-hidden="true">💬</span>';
-        btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleLauncherPanel(); });
-        btn.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLauncherPanel(); }
-        });
+    const mode = state.settings.launcherMode || 'bar';
+    const wantBar = mode === 'bar' || mode === 'both';
+    const wantFab = mode === 'floating' || mode === 'both';
+
+    // The FAB mounts independently of the QR bar, so the panel stays reachable
+    // even with the Quick Replies extension disabled.
+    if (wantFab) ensureFloatingLauncher({ onToggle: toggleLauncherPanel });
+    else removeFloatingLauncher();
+
+    let btn = null;
+    if (wantBar) {
+        const host = getLauncherHost();
+        if (host) {
+            btn = existing;
+            if (!btn) {
+                btn = document.createElement('div');
+                btn.id = 'dsc_launcher';
+                btn.className = 'qr--button menu_button interactable dsc_launcher';
+                btn.tabIndex = 0;
+                btn.setAttribute('role', 'button');
+                btn.setAttribute('aria-label', 'DS Comments');
+                btn.innerHTML = '<span aria-hidden="true">💬</span>';
+                btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleLauncherPanel(); });
+                btn.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLauncherPanel(); }
+                });
+            }
+            if (btn.parentElement !== host) host.appendChild(btn);
+            document.body.classList.add('dsc-launcher-mounted');
+        }
     }
-    if (btn.parentElement !== host) host.appendChild(btn);
-    document.body.classList.add('dsc-launcher-mounted');
-    btn.classList.toggle('dsc_launcher_active', isPanelVisible());
+    if (!btn && existing) existing.remove();
+    if (!wantBar || !btn) document.body.classList.remove('dsc-launcher-mounted');
+    if (btn) btn.classList.toggle('dsc_launcher_active', isPanelVisible());
     return btn;
 }
 
@@ -581,6 +598,7 @@ function bindSettingsPanelEvents() {
             if (volume) volume.disabled = !el.checked;
         }
         if (el.id === 'dsc_fontfam') { applyFontFamily(el.value); }
+        if (el.id === 'dsc_launcher_mode') { ensureLauncher(); }
         if (el.id === 'dsc_enabled') { syncPanelToSettings().catch(e => error('syncPanelToSettings error:', e)); }
     });
 
@@ -936,6 +954,7 @@ function unbindLauncherRuntime() {
     if (_launcherObserver) { _launcherObserver.disconnect(); _launcherObserver = null; }
     const launcher = document.getElementById('dsc_launcher');
     if (launcher) launcher.remove();
+    removeFloatingLauncher();
     document.body.classList.remove('dsc-launcher-mounted');
 }
 

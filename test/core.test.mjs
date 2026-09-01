@@ -182,6 +182,16 @@ test('loadSettings: invalid apiSource migrated to default "profile" (legacy "mai
     assert.equal(state.settings.apiSource, 'profile');
 });
 
+test('loadSettings: launcherMode kept when valid, defaulted when invalid', async () => {
+    globalThis._stCtx.extensionSettings[MODULE_NAME] = { launcherMode: 'floating' };
+    await loadSettings();
+    assert.equal(state.settings.launcherMode, 'floating');
+
+    globalThis._stCtx.extensionSettings[MODULE_NAME] = { launcherMode: 'side-panel' };
+    await loadSettings();
+    assert.equal(state.settings.launcherMode, 'bar');
+});
+
 test('loadSettings removes legacy token settings without discarding unknown settings', async () => {
     let saves = 0;
     globalThis._stCtx.extensionSettings[MODULE_NAME] = {
