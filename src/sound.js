@@ -30,7 +30,6 @@ export const DEFAULT_SOUND_FILENAME = 'Tiny_minimalist_bubb_#4-1780921666702.wav
 export const BUNDLED_SOUNDS = [
     { name: 'Tiny crystalline',     key: 'folder:Tiny_crystalline_gla_#2-1780921518367.wav' },
     { name: 'Tiny minimalist bubb', key: 'folder:Tiny_minimalist_bubb_#4-1780921666702.wav' },
-    { name: 'Uwu kawaii',           key: 'folder:uwu-kawaii-female-voice-roys-noise-willows-kawaii-uwu-sound-2-1-0m01s.mp3' },
 ];
 
 // Uploadable audio extensions — mirrors the accept attribute of
