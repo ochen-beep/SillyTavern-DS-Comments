@@ -59,7 +59,7 @@ import { createPermanentRegistrationController } from './src/registration-lifecy
 import { buildDscommentsCommand } from './src/slash-commands.js';
 import { loadPinnedFeeds, flushPinnedPersist } from './src/pinned-store.js';
 import { loadEventLog, flushEventLog, clearEventLog, dumpEventLog, recordEvent } from './src/event-log.js';
-import { feedStoreSnapshot, mergeImportedEntries, loadFeedStore } from './src/feed-file-store.js';
+import { feedStoreSnapshot, loadFeedStore } from './src/feed-file-store.js';
 
 // ── Lifecycle Hooks ──
 
@@ -513,13 +513,6 @@ function bindSettingsPanelEvents() {
         if (e.target.closest('#dsc_clear_all')) { handleClearAll(); return; }
         // Debug: export captured restore/feed-loss log as a downloadable .json.
         if (e.target.closest('#dsc_dump_logs')) { handleDumpLogs(); return; }
-        // Comments export/import (server-file store travels outside the chat).
-        if (e.target.closest('#dsc_export_feeds')) { handleExportFeeds(); return; }
-        if (e.target.closest('#dsc_import_feeds')) {
-            const fileInput = root.querySelector('#dsc_import_feeds_file');
-            if (fileInput) { fileInput.value = ''; fileInput.click(); }
-            return;
-        }
     });
 
     // change events (selects, checkboxes)
@@ -542,13 +535,6 @@ function bindSettingsPanelEvents() {
                 reader.readAsDataURL(file);
                 el.value = '';
             }
-            return;
-        }
-        // Comments import: read the picked JSON and merge into the store.
-        if (el.id === 'dsc_import_feeds_file') {
-            const file = el.files?.[0];
-            el.value = '';
-            if (file) handleImportFeeds(file);
             return;
         }
         const cfg = FIELD_MAP[el.id];
@@ -729,83 +715,6 @@ async function handleDumpLogs() {
     } catch (e) {
         error('handleDumpLogs error:', e);
         toastr?.error(`${tr('Could not export logs: {msg}', 'dscomments.debug.exportError').replace('{msg}', e?.message || e)}`);
-    }
-}
-
-// ── Comments export / import (server-file store) ──
-// Comments no longer travel inside the chat file; these buttons are the
-// portable backup/transfer path between devices and ST instances.
-
-async function handleExportFeeds() {
-    try {
-        const snap = feedStoreSnapshot();
-        if (!snap?.loaded) {
-            await loadFeedStore();
-        }
-        const finalSnap = feedStoreSnapshot();
-        if (!finalSnap?.loaded || !Object.keys(finalSnap.entries).length) {
-            toastr?.warning(tr('No comments to export in this chat.', 'dscomments.storage.exportEmpty'));
-            return;
-        }
-        const payload = {
-            probe: 'DS Comments feed export',
-            exportedAt: new Date().toISOString(),
-            chatId: getCtx()?.chatId ?? null,
-            file: finalSnap.key,
-            v: 2,
-            entries: finalSnap.entries,
-        };
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 10);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `dscomments-feeds-${stamp}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        toastr?.success(tr('Comments exported', 'dscomments.storage.exported'));
-    } catch (e) {
-        error('handleExportFeeds error:', e);
-        toastr?.error(`${tr('Failed to export comments: {msg}', 'dscomments.storage.exportError').replace('{msg}', e?.message || e)}`);
-    }
-}
-
-async function handleImportFeeds(file) {
-    try {
-        // Same cap as custom sound uploads: a multi-hundred-MB JSON would be
-        // parsed and merged into the mirror before any limit could react.
-        if (file.size > 5 * 1024 * 1024) {
-            toastr?.error(tr('File is too large. Maximum: 5 MB.', 'dscomments.file.tooLarge'));
-            return;
-        }
-        const text = await file.text();
-        const doc = JSON.parse(text);
-        if (!doc || typeof doc !== 'object' || !doc.entries || typeof doc.entries !== 'object') {
-            toastr?.error(tr('This file does not look like a DS Comments export.', 'dscomments.storage.importBadFile'));
-            return;
-        }
-        if (!feedStoreSnapshot()?.loaded) {
-            await loadFeedStore();
-        }
-        const { merged, skipped } = mergeImportedEntries(doc);
-        if (merged > 0) {
-            recordEvent('log', `imported ${merged} feed entries from ${file.name}`);
-            toastr?.success(tr('Imported entries: {n}', 'dscomments.storage.imported').replace('{n}', String(merged)));
-            if (skipped > 0) {
-                toastr?.warning(tr('Skipped entries: {n} (size or count limit).', 'dscomments.storage.importSkipped').replace('{n}', String(skipped)));
-            }
-            // Refresh the panel if the current post gained an entry.
-            updatePostIndicator();
-        } else if (skipped > 0) {
-            toastr?.warning(tr('Skipped entries: {n} (size or count limit).', 'dscomments.storage.importSkipped').replace('{n}', String(skipped)));
-        } else {
-            toastr?.info(tr('No new entries found (all already present or newer).', 'dscomments.storage.importNoop'));
-        }
-    } catch (e) {
-        error('handleImportFeeds error:', e);
-        toastr?.error(`${tr('Failed to import comments: {msg}', 'dscomments.storage.importError').replace('{msg}', e?.message || e)}`);
     }
 }
 

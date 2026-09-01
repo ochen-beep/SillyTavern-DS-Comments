@@ -14,7 +14,6 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 - Configurable prompt: editable "vibe" templates (character and tone), role, jailbreak block (system / user / assistant-prefill positions), context depth, persona, character description, and world info (lorebooks) with a per-chat scope toggle for the automatic mode (all activation sources, or only the books attached to the chat: character / chat / persona).
 - Notification sounds: built-in or user-uploaded, stored server-side so they follow your SillyTavern data directory.
 - Touch gestures for switching posts and swipes, quick settings menu, font family/size controls, theme sync.
-- Export/import of comment feeds between devices and as backups.
 - Slash commands: `/dscomments toggle|regenerate|clear`.
 - Privacy-conscious diagnostics: log dumps contain metadata only — no scene text, prompts, API keys, or raw model responses.
 - Localized UI: English base with a Russian translation.
@@ -52,7 +51,6 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 - Every message and swipe keeps its own feed: switching messages or swiping restores the saved feed for that exact variant.
 - Gestures: swipe left/right to move between swipes, pull or scroll vertically to move between posts. Quick settings and font controls live in the feed's own menu.
 - Slash commands: `/dscomments toggle` (enable/disable), `/dscomments regenerate` (new commentary for the current message), `/dscomments clear` (drop saved commentary).
-- **Export chat comments** / **Import comments** buttons live in the cache management section of the settings.
 - A detailed Russian guide is available in [USER_GUIDE.md](USER_GUIDE.md).
 
 ## Storage modes
@@ -62,7 +60,7 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 
 saveMode files are named `dsc_<guid>.json` and are visible among the user's files / Data Bank. A missing or unreadable file is treated as an empty cache; new entries are simply created again. Renaming a chat keeps the GUID bound to the old file. Simultaneous writes from multiple tabs use last-write-wins.
 
-> **About "Clean extension data" (and deleting the extension):** it clears this browser's local stores (no-save feeds, prompt templates, API key, the event log), removes uploaded custom sounds, and deletes the comments file of the **current** chat. Comment files of *other* chats (`dsc_<guid>.json`) stay in the user files — SillyTavern's API does not let an extension enumerate them. Delete those manually via the Data Bank / user files if needed (the exact file name for a chat is shown by its comment-export's `file` field).
+> **About "Clean extension data" (and deleting the extension):** it clears this browser's local stores (no-save feeds, prompt templates, API key, the event log), removes uploaded custom sounds, and deletes the comments file of the **current** chat. Comment files of *other* chats (`dsc_<guid>.json`) stay in the user files — SillyTavern's API does not let an extension enumerate them. Delete those manually via the Data Bank / user files if needed (the exact file name for a chat is shown by the debug menu's DS Comments cache info entry).
 
 Both modes sit behind a mode-agnostic adapter (`storeFeed`/`clearFeed`/`getCurrentFeedSource` in `src/cache.js`).
 

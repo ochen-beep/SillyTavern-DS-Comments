@@ -571,50 +571,6 @@ export function feedStoreSnapshot() {
     };
 }
 
-/**
- * Import limits: an import file is user-supplied and unbounded otherwise —
- * these bound how much a single import can push into the mirror (and then to
- * the server file). Enforced by mergeImportedEntries; oversized entries are
- * skipped and reported, not silently truncated.
- */
-export const IMPORT_LIMITS = Object.freeze({
-    maxEntries: 2000,             // accepted entries per import call
-    maxEntryHtmlChars: 200_000,   // rendered-feed size cap per entry
-});
-
-/**
- * Merge an imported document (export/import buttons). Caller re-persists.
- * Accepts at most IMPORT_LIMITS.maxEntries entries and skips entries whose
- * html exceeds IMPORT_LIMITS.maxEntryHtmlChars; both rejections count into
- * `skipped`.
- * @returns {{ merged: number, skipped: number }}
- */
-export function mergeImportedEntries(doc) {
-    if (!doc || typeof doc !== 'object' || !doc.entries || typeof doc.entries !== 'object') {
-        return { merged: 0, skipped: 0 };
-    }
-    if (!_mirror) _mirror = emptyMirror();
-    let merged = 0;
-    let skipped = 0;
-    for (const [k, p] of Object.entries(doc.entries)) {
-        if (!k || !validPayload(p)) continue;
-        if (merged >= IMPORT_LIMITS.maxEntries || (p.html || '').length > IMPORT_LIMITS.maxEntryHtmlChars) {
-            skipped++;
-            continue;
-        }
-        const existing = _mirror.entries[k];
-        if (!existing || (Number(p.ts) || 0) > (Number(existing.ts) || 0)) {
-            _mirror.entries[k] = { ...p };
-            merged++;
-        }
-    }
-    if (merged > 0) {
-        const ctx = getCtx();
-        schedulePersist({ ctx, key: _loadedKey ?? chatFileKey(ctx), mirror: _mirror });
-    }
-    return { merged, skipped };
-}
-
 // ── v1 migration (chatMetadata.posts → file entries) ──
 
 /**
