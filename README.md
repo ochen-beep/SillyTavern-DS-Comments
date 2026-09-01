@@ -29,7 +29,7 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 
 ### From a git repository
 
-> Repository URL will be added here once the extension is published.
+> Repository URL: **https://github.com/ochen-beep/SillyTavern-DS-Comments**
 
 1. Open **Extensions → Manage Extensions** in SillyTavern.
 2. Paste the repository URL into the *Install extension* field and press **Install**.

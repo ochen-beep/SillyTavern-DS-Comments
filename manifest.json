@@ -4,9 +4,9 @@
     "dependencies": [],
     "js": "index.js",
     "css": "style.css",
-    "author": "DS Comments",
+    "author": "ochen-beep",
     "version": "0.10.0",
-    "homePage": "",
+    "homePage": "https://github.com/ochen-beep/SillyTavern-DS-Comments",
     "auto_update": false,
     "minimum_client_version": "1.18.0",
     "i18n": {
