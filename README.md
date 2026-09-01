@@ -2,7 +2,7 @@
 
 A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separate Discord-style "spectator comments" feed for the current chat scene via its own LLM request. The chat text, swipes, and scroll position are never modified.
 
-**English** · [Русский](USER_GUIDE.md)
+**English** · [Русский](USER_GUIDE.md) ЗАЛЕТАЙ :)
 
 > This extension interacts with [SillyTavern](https://github.com/SillyTavern/SillyTavern) (AGPL-3.0) through its public extension API and contains no SillyTavern code.
 
