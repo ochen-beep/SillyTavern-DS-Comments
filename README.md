@@ -2,7 +2,7 @@
 
 A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separate Discord-style "spectator comments" feed for the current chat scene via its own LLM request. The chat text, swipes, and scroll position are never modified.
 
-**Русскоязычное руководство пользователя: [USER_GUIDE.md](USER_GUIDE.md).**
+**English** · [Русский](USER_GUIDE.md)
 
 > This extension interacts with [SillyTavern](https://github.com/SillyTavern/SillyTavern) (AGPL-3.0) through its public extension API and contains no SillyTavern code.
 
@@ -76,26 +76,17 @@ Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds a
 
 ## Diagnostics
 
-### Browser console
-
-The console is reserved for "extension loaded / something broke": in normal mode it receives only a single init line (`Initialized.`), a cleanup confirmation (`Cleanup completed`), and warnings/errors. The entire success path (generations, gestures, cache hits, restores) goes through `trace()` into the debug ring only — following the SillyTavern best practice "do not spam the console with excessive logs in production".
-
-### Debug dump
-
 - The **Export logs (.json)** button in the settings returns diagnostics metadata: a runtime snapshot, the persistent event log, the restore log, and the debug log. Scene text, comment HTML, API keys, the full prompt, and raw responses never enter the dump.
 - The persistent event log lives in localforage, survives a page reload, and contains only metadata: ISO timestamps, session ID, chat-switch stages, restores, generations, API stages, parsing, file writes, and errors.
+- The full trace is included in the dump when Debug mode is enabled.
+- In normal mode the browser console stays quiet (one init line, warnings/errors); the success path goes to the debug ring only.
 - When reporting an issue, attach the dump along with reproduction steps: the chat/swipe involved, the user action, whether a cache hit was expected, whether noSaveMode was on, and whether the error happened after a reload or a chat switch.
-- The full trace (everything routed from the console into `trace`) is included in the dump when Debug mode is enabled.
-- Slash command `/dscomments toggle|regenerate|clear`; Debug Menu → "DS Comments: …" for cache/pins/logs.
-- Code comment markers: `M-N*` — bugs found on mobile (M = mobile, N = ordinal), `H-N*` — "unfixable" limitations; each marker is accompanied by an explanation.
 
 ## Compatibility notes
 
-- `minimum_client_version: "1.18.0"` — the extension is developed and tested against this ST version; change it only after verifying on the target version.
-- The comment cache is written via `saveMetadata()` **without debounce**: the debounced variant skips the save on fast chat switches and would orphan the entry made by the separate generation API request.
-- `BASE_URL` intentionally has no leading slash — it works when ST is hosted under a subpath.
-- Jailbreak role **Assistant** is a trailing-assistant prefill. ST passes message arrays through as-is and its text-completion path formats a trailing assistant message as prefill, but the backend decides: OpenAI-compatible APIs generally continue it, while the newest Claude models reject trailing assistant messages with an API error.
-- Automatic-lore scope "attached only" filters ST's `WORLD_INFO_ACTIVATED` data by book name and skips the dry-run `getWorldInfoPrompt` scan (its string carries no per-entry origin, so global-panel entries could not be filtered out). Without fresh activation data (manual regen of an older post/swipe) the lore block is legitimately empty. Character extra books (`world_info.charLore`) are module state not exposed on `getContext()`, so they cannot be listed as attached. The `autoScope` config normalizes to `undefined` for the default on purpose — the generation fingerprint must hash legacy configs and an explicit `all` identically.
+- Requires SillyTavern **1.18.0** or newer; developed and tested against this version.
+- Jailbreak role **Assistant** is a trailing-assistant prefill: OpenAI-compatible APIs generally continue it, while the newest Claude models reject trailing assistant messages with an API error.
+- With the lorebook scope set to "attached only", manually regenerating an older post/swipe can produce an empty lore block — there is no fresh activation data for that point in the chat.
 
 ## Development
 
@@ -103,11 +94,7 @@ The console is reserved for "extension loaded / something broke": in normal mode
 npm test   # node --test across test/*.test.mjs (NODE_TEST=1 enables test-only exports)
 ```
 
-The test runtime needs no jsdom: `test-helpers/stub-runtime.mjs` stubs the minimum DOM/SillyTavern surface required by the pure modules.
-
-### ST API verification
-
-API surfaces used by the extension (`getContext()`, `renderExtensionTemplateAsync`, events, `ConnectionManagerRequestService`, `HOOK_TIMEOUT`, …) are verified against a snapshot of SillyTavern sources (`script.js`, `extensions.js`, `events.js`, `world-info.js`, `popup.js`, `st-context.js`, etc.). The snapshot is generated on demand and is **not committed** to the repository or shipped in the distribution.
+The test runtime needs no jsdom: `test-helpers/stub-runtime.mjs` stubs the minimum DOM/SillyTavern surface required by the pure modules. API surfaces used by the extension are verified against a snapshot of SillyTavern sources that is generated on demand and not committed.
 
 ## Packaging
 
@@ -130,6 +117,10 @@ English-base + Russian-translation structure (the SillyTavern convention): all U
 - `src/events.js` — scroll observer and SillyTavern event handlers.
 - `src/ui/` — window, chrome, quick-settings menu, settings, gestures, themes.
 - `chat-styles/main.md` — the editable "vibe" (the format contract lives in `src/prompt-contract.js` and is glued in code — templates must not duplicate it).
+
+## See also
+
+This extension was inspired by [SillyTavern-EchoChamber](https://github.com/mattjaybe/SillyTavern-EchoChamber). If you want a different take on the idea — with more emphasis on chat design — give it a try.
 
 ## License
 
