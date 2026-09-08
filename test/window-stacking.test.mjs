@@ -3,11 +3,14 @@
  * DS Comments — layering contract tests (style.css, static analysis).
  *
  * Locks two contracts:
- *   1. Layering: #dscWindow (2999) and its popovers/menus (3500) sit BELOW
- *      native SillyTavern popups (#dialogue_popup / #shadow_popup / .popup are
- *      z-index 9999 in ST's own style.css) — and the extension must NEVER
- *      override host popup stacking (a previous `z-index: 4000 !important`
- *      rule pushed native popups below ST's own 4001-4100 layers).
+ *   1. Layering: #dscWindow (2998), the FAB (2999) and the window's
+ *      popovers/menus (3500) sit BELOW native SillyTavern popups
+ *      (#dialogue_popup / #shadow_popup / .popup are z-index 9999 in ST's own
+ *      style.css) — and the extension must NEVER override host popup stacking
+ *      (a previous `z-index: 4000 !important` rule pushed native popups below
+ *      ST's own 4001-4100 layers). The FAB additionally stays below ST's own
+ *      panels (left-nav drawer 3000, top bar 3005) so it never blocks host
+ *      settings, while remaining above the window it toggles (2998).
  *   2. Header scoping: the window chrome header is styled by #dscHeader; the
  *      per-message header by .dsc_message .dsc_header. Bare .dsc_header rules
  *      collided at equal specificity (code review P1-2) and must not return.
@@ -23,7 +26,7 @@ test('preserves comments window layering contract', async () => {
 
     const windowRule = css.match(/#dscWindow\s*\{([\s\S]*?)\n\}/);
     assert.ok(windowRule, '#dscWindow rule should exist');
-    assert.match(windowRule[1], /z-index:\s*2999;/, '#dscWindow should remain at z-index 2999');
+    assert.match(windowRule[1], /z-index:\s*2998;/, '#dscWindow should remain at z-index 2998');
     assert.match(
         windowRule[1],
         /\/\*[^*]*host panels and modals above the comments window[^*]*\*\//,
@@ -51,13 +54,14 @@ test('no bare .dsc_header rules (P1-2 window-vs-message collision regression)', 
     assert.match(css, /#dscWindow\.dsc_mobile > \.dsc_header/, 'mobile rule targets the window chrome only (direct child)');
 });
 
-test('floating launcher layers above the window, below popovers (FAB toggle contract)', async () => {
+test('floating launcher layers above the window, below host panels (FAB toggle contract)', async () => {
     const css = await readFile(stylePath, 'utf8');
     const rule = css.match(/\.dsc_fab\s*\{([\s\S]*?)\n\}/);
     assert.ok(rule, '.dsc_fab rule should exist');
-    // 3100: clickable over the mobile fullscreen window (2999) — the FAB is the
-    // panel's only toggle — while popovers (3500) and native ST popups (9999)
-    // stay above it.
-    assert.match(rule[1], /z-index:\s*3100;/, '.dsc_fab should remain at z-index 3100');
+    // 2999: clickable over the mobile fullscreen window (2998) — the FAB is the
+    // panel's only toggle — but below ST's own chrome (left-nav drawer 3000,
+    // top bar 3005) so it never blocks host settings, while popovers (3500)
+    // and native ST popups (9999) stay above it.
+    assert.match(rule[1], /z-index:\s*2999;/, '.dsc_fab should remain at z-index 2999');
     assert.match(css, /\.dsc_fab\.dsc_fab_active\s*\{/, 'active FAB state rule should exist (never hides while the panel is open)');
 });

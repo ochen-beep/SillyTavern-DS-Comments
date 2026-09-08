@@ -9,6 +9,12 @@
  * The FAB never hides while the panel is open — the panel has no close button,
  * so the FAB itself is the toggle (accent-highlighted via .dsc_fab_active).
  *
+ * Layering (locked in test/window-stacking.test.mjs): z-index 2999 — above the
+ * comments window (2998), below ST's own chrome (left-nav drawer 3000, top bar
+ * 3005). Because the top bar paints over the FAB, drag/restore/resize clamp the
+ * position below it: a FAB parked in the top strip would otherwise slide
+ * underneath the bar and become permanently unclickable.
+ *
  * DOM id: #dsc_fab (single source of truth; generator.js pulses it with
  * .dsc_generating alongside #dsc_launcher).
  *
@@ -63,6 +69,32 @@ function clampPosition(pos, viewport, size) {
     };
 }
 
+// ST's top bar paints above the FAB (3005 vs 2999 — see style.css): measure how
+// much of it covers the viewport top so positions can be clamped below it.
+// Mirrors window.js's mobile inset logic; kept separate because that one only
+// runs on mobile viewports, while the FAB exists on desktop too.
+function getStTopBarInset() {
+    const bar = document.getElementById('top-bar');
+    if (!bar) return 0;
+    const bottom = bar.getBoundingClientRect().bottom;
+    // A bar scrolled/hid out of view (bottom <= 0) contributes nothing.
+    return Number.isFinite(bottom) && bottom > 0 ? Math.min(bottom, window.innerHeight) : 0;
+}
+
+// Pure core of the chrome-aware clamp: never above the top-bar inset, never
+// outside the viewport (the viewport still wins on absurdly tiny windows).
+function clampFabPosition(pos, viewport, size, topInset) {
+    const clamped = clampPosition(pos, viewport, size);
+    if (topInset > 0) {
+        clamped.top = Math.min(Math.max(clamped.top, topInset), viewport.height - size);
+    }
+    return clamped;
+}
+
+function clampToViewportWithChrome(pos) {
+    return clampFabPosition(pos, getViewport(), FAB_SIZE, getStTopBarInset());
+}
+
 /**
  * Pick the mount position: the saved one when it is still fully inside the
  * viewport, the corner default otherwise.
@@ -89,7 +121,7 @@ function restorePosition(icon) {
     } catch {
         try { localStorage.removeItem(POSITION_KEY); } catch { /* quota/private mode */ }
     }
-    const pos = computeRestoredPosition(saved, getViewport(), FAB_SIZE, isMobileViewport());
+    const pos = clampToViewportWithChrome(computeRestoredPosition(saved, getViewport(), FAB_SIZE, isMobileViewport()));
     icon.style.left = `${pos.left}px`;
     icon.style.top = `${pos.top}px`;
     icon.style.right = 'auto';
@@ -132,7 +164,7 @@ function makeDraggable(icon) {
             dragging = true;
             icon.classList.add('dsc_fab_dragging');
         }
-        const pos = clampPosition({ left: rawX, top: rawY }, getViewport(), FAB_SIZE);
+        const pos = clampToViewportWithChrome({ left: rawX, top: rawY });
         icon.style.left = `${pos.left}px`;
         icon.style.top = `${pos.top}px`;
     });
@@ -162,7 +194,7 @@ function onWindowResize() {
     const left = parseFloat(icon.style.left);
     const top = parseFloat(icon.style.top);
     if (!Number.isFinite(left) || !Number.isFinite(top)) return;
-    const pos = clampPosition({ left, top }, getViewport(), FAB_SIZE);
+    const pos = clampToViewportWithChrome({ left, top });
     icon.style.left = `${pos.left}px`;
     icon.style.top = `${pos.top}px`;
 }
@@ -231,6 +263,6 @@ export function removeFloatingLauncher() {
 
 // Test-only exports (NODE_TEST guard — invisible in the ST browser host).
 const _test = typeof process !== 'undefined' && process?.env?.NODE_TEST === '1'
-    ? { defaultPosition, clampPosition, computeRestoredPosition, FAB_SIZE, DRAG_THRESHOLD_PX }
+    ? { defaultPosition, clampPosition, clampFabPosition, computeRestoredPosition, FAB_SIZE, DRAG_THRESHOLD_PX }
     : undefined;
 export { _test as _testFloatingLauncher };

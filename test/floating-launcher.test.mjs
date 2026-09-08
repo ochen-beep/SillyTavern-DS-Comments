@@ -3,7 +3,9 @@
  * DS Comments — floating launcher (FAB) position math tests.
  *
  * Covers the pure helpers: default anchor positions (desktop vs mobile),
- * viewport clamping, and restore-position validation. The localStorage payload
+ * viewport clamping (including the ST top-bar inset — the bar paints above the
+ * FAB's layer, so a position in the top strip must be pushed below it), and
+ * restore-position validation. The localStorage payload
  * is untrusted — stale coordinates saved on a larger viewport must fall back to
  * the corner default, never strand the FAB off-screen or partially outside.
  *
@@ -17,7 +19,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { _testFloatingLauncher } from '../src/ui/floating-launcher.js';
 
-const { defaultPosition, clampPosition, computeRestoredPosition, FAB_SIZE } = _testFloatingLauncher;
+const { defaultPosition, clampPosition, clampFabPosition, computeRestoredPosition, FAB_SIZE } = _testFloatingLauncher;
 
 const VP = { width: 1920, height: 1080 };
 
@@ -43,6 +45,27 @@ test('clampPosition keeps the FAB fully inside the viewport', () => {
     assert.deepEqual(clampPosition({ left: -50, top: 9999 }, VP, FAB_SIZE), { left: 0, top: 1080 - 36 });
     // in-range coordinates pass through untouched
     assert.deepEqual(clampPosition({ left: 100, top: 200 }, VP, FAB_SIZE), { left: 100, top: 200 });
+});
+
+// ── clampFabPosition (ST top-bar inset) ──
+
+test('clampFabPosition pushes a parked FAB out from under the ST top bar', () => {
+    // The bar (z-index 3005) paints over the FAB (2999): a position in the top
+    // strip would make the button permanently unclickable.
+    assert.deepEqual(clampFabPosition({ left: 100, top: 10 }, VP, FAB_SIZE, 44), { left: 100, top: 44 });
+});
+
+test('clampFabPosition leaves positions below the top bar untouched', () => {
+    assert.deepEqual(clampFabPosition({ left: 100, top: 200 }, VP, FAB_SIZE, 44), { left: 100, top: 200 });
+    // no measurable bar (hidden/scrolled away) → plain viewport clamp
+    assert.deepEqual(clampFabPosition({ left: 100, top: 10 }, VP, FAB_SIZE, 0), { left: 100, top: 10 });
+});
+
+test('clampFabPosition still respects the viewport when the inset is huge', () => {
+    assert.deepEqual(
+        clampFabPosition({ left: 100, top: 10 }, { width: 1920, height: 60 }, FAB_SIZE, 44),
+        { left: 100, top: 60 - 36 },
+    );
 });
 
 // ── computeRestoredPosition ──
