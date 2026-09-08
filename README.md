@@ -1,5 +1,7 @@
 # DS Comments
 
+[![tests](https://github.com/ochen-beep/SillyTavern-DS-Comments/actions/workflows/tests.yml/badge.svg)](https://github.com/ochen-beep/SillyTavern-DS-Comments/actions/workflows/tests.yml)
+
 A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separate Discord-style "spectator comments" feed for the current chat scene via its own LLM request. The chat text, swipes, and scroll position are never modified.
 
 **English** · [Русский](USER_GUIDE.md) ЗАЛЕТАЙ :)
