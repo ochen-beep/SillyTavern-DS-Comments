@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in DS Comments broke
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Reports in Russian are fine too.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, expected vs actual. Screenshots welcome.
+    validations:
+      required: true
+  - type: input
+    id: st-version
+    attributes:
+      label: SillyTavern version
+      description: From the About screen, e.g. 1.13.1
+    validations:
+      required: true
+  - type: input
+    id: ext-version
+    attributes:
+      label: DS Comments version
+      description: From the extensions list, e.g. 0.10.0
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Generation source
+      options:
+        - Connection Manager profile
+        - Custom endpoint
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic dump
+      description: If the issue is about generation — attach the dump from the settings menu. It contains metadata only, no scene text or API keys.
