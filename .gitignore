@@ -1,2 +1,5 @@
 .zcode/
 node_modules/
+Thumbs.db
+desktop.ini
+*.log
