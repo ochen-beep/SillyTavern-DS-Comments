@@ -4,6 +4,7 @@
 > Разведка: **2026-09-09** · Расширение **v0.10.0** (`manifest.json:8`) · `minimum_client_version: 1.18.0` (`manifest.json:11`)
 > Проверено: `npm test` — **549 pass / 0 fail** (node --test, ~0.8 с, NODE_TEST=1). Незакоммиченный diff: `src/prompt-contract.js` + 2 теста (замена плейсхолдеров в JSON-примере контракта на реальный текст — см. §6).
 > Deep-dive документы: `docs/deep-dive-prompt-system.md` (система промптов: вайб/контракт/сборка/отправка, 2026-09-09).
+> Реализовано 2026-09-09: выбор шаблона больше не сбрасывается сам (фолбэки без персиста, `cc6bc75`); тексты шаблонов перенесены из localforage в extensionSettings + миграция (`a88dc9f`); onClean чистит новое хранилище (`b0e12b3`).
 
 ## 1. Назначение
 
@@ -45,7 +46,7 @@ SillyTavern-расширение: генерирует «дискорд-лент
 | `src/ui/feed-gestures.js` | Жесты: overscroll-пулл (посты), горизонтальный свайп (свайпы, только локальный restore), колесо с dwell-gate; один AbortController на все слушатели |
 | `src/ui/floating-launcher.js` | FAB `#dsc_fab`, позиция в localStorage, clamp под `#top-bar` |
 | `src/ui/lorebook-picker.js` | Контроллер выбора книг/записей лора; подписка на WORLDINFO_UPDATED |
-| `src/ui/settings-sync.js` | FIELD_MAP (id поля → проп сеттинга, `settings-sync.js:12-37`), синк DOM↔state, шаблоны промптов (edit-on-place в localforage, builtin `main` защищён), populate профилей |
+| `src/ui/settings-sync.js` | FIELD_MAP (id поля → проп сеттинга, `settings-sync.js:12-37`), синк DOM↔state, шаблоны промптов (edit-on-place в extensionSettings `promptTemplates`, builtin `main` защищён; миграция из localforage `migrateTemplatesFromLocalforage`), populate профилей |
 | `src/ui/theme-sync.js` | Непрозрачный фон из `--SmartThemeBlurTintColor`: MutationObserver на style `<html>`, токены `--dsc-bg/--dsc-overlay-bg` |
 | `src/ui/dom-ready.js` | `whenSendFormReady` — APP_READY вместо polling, возвращает disposer |
 | `src/ui/st-swipe-bridge.js` | **Отложено**: no-op стаб двусторонней мутации свайпов ST (сохранён как шов для будущего флага) |
@@ -73,7 +74,7 @@ SillyTavern-расширение: генерирует «дискорд-лент
 |---|---|---|
 | Настройки расширения | `ctx.extensionSettings['dscomments']` | `saveSettings()` → `ctx.saveSettingsDebounced()` (каждое изменение UI); flush на page-hide (`index.js:917-928`) |
 | API-ключ custom | localforage `DSComments_apiKey` | debounce 400 мс; flush на blur/page-hide (core.js:681-701) |
-| Вайб-шаблоны пользователей | localforage `DSComments_prompts` | по кнопке Save/Create/Delete/Reset (settings-sync.js:311-353) |
+| Вайб-шаблоны пользователей | `extensionSettings.dscomments.promptTemplates` `{имя: текст}` (серверные настройки; до 2026-09-09 — localforage) | по кнопке Save/Create/Delete/Reset + одноразовая миграция из localforage в init (settings-sync.js) |
 | Фид saveMode | серверный файл `dsc_<guid>.json` (user-files API) | каждая мутация зеркала → сериализованный upload; guid + fork-маркеры → `chatMetadata.dscomments_commentary` через `saveMetadata` |
 | Фид noSave | localforage `DSComments_pinned` (LRU 32) | немедленно после каждой мутации (pinned-store.js:151-166) |
 | Конфиг лора | `chatMetadata['dscomments_lorebook']` | на каждое изменение пикера (lorebooks.js:125-144) |
@@ -103,7 +104,7 @@ SillyTavern-расширение: генерирует «дискорд-лент
 12. **Молчаливые отказы записи шаблонов**: обработчики Save/Create/Reset/Delete (`index.js:645,654,664,674`) await без catch — ошибка localforage = unhandled rejection без тоста. Reset при недоступном `main.md` показывает ложный успех (`settings-sync.js:351` молчит, тост в `index.js:664-666` всё равно success).
 13. **Асимметрия валидации**: Save отказывает на пустой шаблон (`index.js:633-636`), Create — нет (`index.js:654`); пустой юзер-шаблон легитимен в редакторе (hasOwn) но валит генерацию (`generator.js:490`).
 14. **`max_tokens` не задаётся** ни в CM-профиле (`connection.js:138`), ни в custom-body (`connection.js:327`) — длина ответа на усмотрение бекенда; риск обрезанного JSON при больших count (открытый вопрос №1 в deep-dive §7).
-15. **Подтверждён самосброс выбора шаблона на 'main'** (воспроизведён скриптом, deep-dive §8): тексты шаблонов — localforage (браузер×origin), имя выбранного — серверные настройки; два авто-фолбэка (`settings-sync.js:390-396` при каждой загрузке страницы через `renderPanel`→`syncPanelVisibility` и `generator.js:57-63` при генерации) при «повисшем» имени молча переписывают выбор на 'main' И ПЕРСИСТЯТ. Триггеры повисания: другой браузер/устройство, другой origin (localhost≠127.0.0.1≠LAN-IP), хук `clean` ST (ручная кнопка «Clean extension data» / удаление с очисткой — `index.js:124-130` стирает LF_PROMPTS целиком), эвикция хранилища. F5/рестарт сервера НЕ сбрасывают. Тестов на фолбэки нет.
+15. **РЕШЕНО (2026-09-09):** самосброс выбора шаблона на 'main' (воспроизведён скриптом, deep-dive §8): тексты шаблонов — localforage (браузер×origin), имя выбранного — серверные настройки; два авто-фолбэка (`settings-sync.js:390-396` при каждой загрузке страницы через `renderPanel`→`syncPanelVisibility` и `generator.js:57-63` при генерации) при «повисшем» имени молча переписывали выбор на 'main' И ПЕРСИСТИЛИ (теперь: фолбэки без записи, видимое «не найден», транзиентный main — `cc6bc75`). Триггеры повисания устранены переносом текстов в настройки (`a88dc9f`). Исторические триггеры: другой браузер/устройство, другой origin (localhost≠127.0.0.1≠LAN-IP), хук `clean` ST (ручная кнопка «Clean extension data» / удаление с очисткой — `index.js:124-130` стирает LF_PROMPTS целиком), эвикция хранилища. F5/рестарт сервера НЕ сбрасывают. Тестов на фолбэки нет.
 16. **Сверка с доками ST** (deep-dive §8.1): «Don't store large data in extensionSettings» (SillyTavern-Docs, Writing-Extensions, Performance) — их пример «large» = мегабайты; наши вайбы — единицы КБ (main.md 4.6 КБ, jailbreakText 864 симв.), ядро само хранит в extension_settings regex-скрипты и QR-наборы → перенос текстов шаблонов в extensionSettings докам НЕ противоречит (нужен мягкий лимит размера); фиды/звуки/ключ уже вынесены правильно. Фикс: варианты A (extensionSettings) / B (серверный файл через user-files), в любом — убрать персист из фолбэков.
 
 ### Сравнение с открытыми расширениями (проверено по исходникам)
