@@ -279,7 +279,7 @@ export async function populateProfiles() {
 
 let _promptEditorReq = 0;
 
-// ── Prompt templates (edit-on-place via localforage) ──
+// ── Prompt templates (edit-on-place, stored in extension settings) ──
 
 // Built-in templates: served from /chat-styles/*.md, cannot be deleted or reset.
 const BUILTIN_TEMPLATES = {
@@ -288,15 +288,38 @@ const BUILTIN_TEMPLATES = {
 const isBuiltinTemplate = (name) => Object.prototype.hasOwnProperty.call(BUILTIN_TEMPLATES, name);
 const _builtinCache = {};
 
+/**
+ * User template store: `{ name: text }` inside extension settings.
+ * Server-synced, so templates survive page/server reloads and appear in every
+ * browser on the same server. The previous localforage store was per-browser;
+ * any mismatch with the server-side selected name used to silently reset the
+ * selection to 'main' (see docs/deep-dive-prompt-system.md §8).
+ */
+function userTemplates() {
+    const t = state.settings.promptTemplates;
+    return (t && typeof t === 'object' && !Array.isArray(t)) ? t : {};
+}
+
+// Soft size guard: templates are small text; warn before settings.json grows
+// into the ST docs' "large data" class (Writing-Extensions → Performance).
+const TEMPLATE_SOFT_LIMIT = 100_000;
+
+function warnIfHuge(name, content) {
+    if (content.length <= TEMPLATE_SOFT_LIMIT) return;
+    warn(`promptTemplates: "${name}" is ${content.length} chars (soft limit ${TEMPLATE_SOFT_LIMIT})`);
+    globalThis.toastr?.warning(
+        tr('Template "{name}" is very large ({kb} KB). It will be saved, but settings syncing may slow down.', 'dscomments.template.tooLarge')
+            .replace('{name}', name)
+            .replace('{kb}', String(Math.round(content.length / 1024))),
+    );
+}
+
 export async function loadPromptContent(name) {
     if (!name) return '';
-    // User copy in localforage (edit-on-place), if present.
-    try {
-        const all = await SillyTavern.libs.localforage.getItem(LF_PROMPTS) || {};
-        // hasOwn, not truthiness: an empty saved template must show as empty,
-        // not silently render the builtin text in the editor.
-        if (Object.hasOwn(all, name)) return all[name];
-    } catch { /* skip */ }
+    const all = userTemplates();
+    // hasOwn, not truthiness: an empty saved template must show as empty,
+    // not silently render the builtin text in the editor.
+    if (Object.hasOwn(all, name)) return all[name];
     // Builtin .md
     if (_builtinCache[name]) return _builtinCache[name];
     try {
@@ -309,17 +332,19 @@ export async function loadPromptContent(name) {
 }
 
 export async function savePromptContent(name, content) {
-    const all = await SillyTavern.libs.localforage.getItem(LF_PROMPTS) || {};
-    all[name] = content;
-    await SillyTavern.libs.localforage.setItem(LF_PROMPTS, all);
+    if (isBuiltinTemplate(name)) return false;
+    warnIfHuge(name, content);
+    state.settings.promptTemplates = { ...userTemplates(), [name]: content };
+    saveSettings();
+    return true;
 }
 
 export async function savePromptAs(newName, content) {
     if (!newName) return false;
     // 'main' (and any future builtin) is reserved. A user template saved
     // under this name would permanently shadow the builtin: loadPromptContent
-    // reads localforage first, and deletePrompt refuses to remove builtins, so
-    // the override could never be cleared. Reject up front.
+    // reads the settings store first, and deletePrompt refuses to remove
+    // builtins, so the override could never be cleared. Reject up front.
     if (isBuiltinTemplate(newName)) return false;
     await savePromptContent(newName, content);
     state.settings.promptTemplate = newName;
@@ -329,19 +354,19 @@ export async function savePromptAs(newName, content) {
 
 export async function deletePrompt(name) {
     if (isBuiltinTemplate(name)) return false; // built-in cannot be deleted (button disabled)
-    const all = await SillyTavern.libs.localforage.getItem(LF_PROMPTS) || {};
+    const all = { ...userTemplates() };
     delete all[name];
-    await SillyTavern.libs.localforage.setItem(LF_PROMPTS, all);
+    state.settings.promptTemplates = all;
     if (state.settings.promptTemplate === name) {
         state.settings.promptTemplate = 'main';
-        saveSettings();
     }
+    saveSettings();
     return true;
 }
 
 /**
  * Roll a user template back to the original builtin `main` vibe
- * (overwrites the localforage entry with the content of chat-styles/main.md).
+ * (overwrites the settings entry with the content of chat-styles/main.md).
  * For built-ins — no-op (Reset button is disabled, this won't be reached).
  */
 export async function resetPromptToBuiltin() {
@@ -352,9 +377,44 @@ export async function resetPromptToBuiltin() {
     await savePromptContent(name, builtinVibe);
 }
 
-async function listTemplateNames() {
-    const all = await SillyTavern.libs.localforage.getItem(LF_PROMPTS) || {};
-    return Object.keys(all).sort((a, b) => a.localeCompare(b, 'ru'));
+function listTemplateNames() {
+    return Object.keys(userTemplates()).sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+/**
+ * One-time, non-destructive migration: localforage `DSComments_prompts`
+ * (browser-local) → extension settings (server-synced). Runs only while the
+ * settings store has no user templates, so it never overwrites templates that
+ * arrived from another browser after the migration, and it retries on the
+ * next init if the persist fails. localforage is left untouched — the Clean
+ * hook removes the legacy key along with the rest of browser storage.
+ * @param {Function} [persistSettings] — DI for tests; defaults to saveSettings.
+ * @returns {Promise<number>} how many templates were imported.
+ */
+export async function migrateTemplatesFromLocalforage(persistSettings = saveSettings) {
+    if (Object.keys(userTemplates()).length) return 0;
+    let legacy;
+    try {
+        legacy = await SillyTavern.libs.localforage.getItem(LF_PROMPTS) || {};
+    } catch (e) {
+        warn('promptTemplates: legacy localforage read failed (will retry next init):', e);
+        return 0;
+    }
+    // 'main' is builtin-reserved (a legacy entry under it could never be
+    // selected); only real text templates are worth importing.
+    const imported = Object.fromEntries(Object.entries(legacy).filter(([k, v]) =>
+        !isBuiltinTemplate(k) && typeof v === 'string' && k));
+    if (!Object.keys(imported).length) return 0;
+    const previous = state.settings.promptTemplates;
+    state.settings.promptTemplates = imported;
+    try {
+        await persistSettings();
+    } catch (e) {
+        state.settings.promptTemplates = previous;
+        warn('promptTemplates: migration persist failed (will retry next init):', e);
+        return 0;
+    }
+    return Object.keys(imported).length;
 }
 
 /** Populate the template dropdown, load the current template into the textarea,
@@ -382,7 +442,7 @@ export async function syncPromptEditor() {
             select.appendChild(o);
         }
         // User
-        for (const name of await listTemplateNames()) {
+        for (const name of listTemplateNames()) {
             if (isBuiltinTemplate(name)) continue;   // built-in already listed
             const o = document.createElement('option');
             o.value = name; o.textContent = name;

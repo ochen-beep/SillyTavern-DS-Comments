@@ -59,9 +59,10 @@ export const defaultSettings = Object.freeze({
     includePersona: false,
     includeCharacterDescription: false,
 
-    // prompt template: builtin 'main' (chat-styles/main.md — vibe) + user copies in localforage.
-    // The contract (header + FORMAT RULES) lives in code (prompt-contract.js), not localforage.
+    // prompt template: builtin 'main' (chat-styles/main.md — vibe) + user copies.
+    // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
     promptTemplate: 'main',
+    promptTemplates: {},              // { name: text } — server-synced extension settings (was browser-local localforage)
 
     // jailbreak block
     enableJailbreakBlock: false,

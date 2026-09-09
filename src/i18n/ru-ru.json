@@ -32,6 +32,7 @@
     "dscomments.template.emptySave": "Шаблон пустой — сначала введи текст.",
     "dscomments.template.notFound": "не найден",
     "dscomments.template.notFoundText": "Шаблон «{name}» пока недоступен. Выбор сохранён — текст появится, как только шаблон станет доступен.",
+    "dscomments.template.tooLarge": "Шаблон «{name}» очень большой ({kb} КБ). Он будет сохранён, но синхронизация настроек может замедлиться.",
     "dscomments.cache.clearConfirm": "Очистить ленту и весь кэш комментариев текущего чата?",
     "dscomments.cache.cleared": "Лента и кэш очищены",
     "dscomments.debug.exported": "Логи выгружены",

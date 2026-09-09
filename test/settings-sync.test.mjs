@@ -17,6 +17,9 @@ import {
     syncPromptEditor,
     syncNumericInput,
     savePromptAs,
+    savePromptContent,
+    deletePrompt,
+    migrateTemplatesFromLocalforage,
 } from '../src/ui/settings-sync.js';
 
 // Minimal DOM stub: record the last value written to the textarea.
@@ -163,31 +166,31 @@ test('lorebook refresh reads the new chat config and teardown permits a clean re
 });
 
 test('syncPromptEditor: a stale (older) template load does NOT overwrite the textarea', async () => {
-    // Template A resolves slowly, B fast. Switch A→B before A resolves.
-    let resolveA;
-    let aStarted = false;
-    globalThis.SillyTavern.libs.localforage.getItem = async () => {
-        // The first getItem of the first syncPromptEditor call is held;
-        // every later call (including the whole second syncPromptEditor) resolves fast.
-        if (!aStarted) {
-            aStarted = true;
-            return new Promise((res) => { resolveA = res; });
+    // The guard now matters on the builtin fetch path (user templates resolve
+    // synchronously from settings). Two rapid syncs race two fetches of
+    // chat-styles/main.md: the first is held, the second resolves first.
+    let resolveFirst;
+    let fetchCount = 0;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        if (!String(url).includes('/chat-styles/main.md')) return origFetch(url);
+        fetchCount++;
+        if (fetchCount === 1) {
+            return new Promise((res) => { resolveFirst = () => res({ ok: true, status: 200, text: async () => 'STALE_TEXT' }); });
         }
-        return { main: 'A_TEXT', A: 'A_TEXT', B: 'B_TEXT' };
+        return { ok: true, status: 200, text: async () => 'FRESH_TEXT' };
     };
-    // Make the first call slow and the second fast by ordering: we call
-    // syncPromptEditor twice with different templates and resolve A in between.
-    state.settings.promptTemplate = 'A';
+    state.settings.promptTemplate = 'main';
     const p1 = syncPromptEditor();
-    state.settings.promptTemplate = 'B';
     const p2 = syncPromptEditor();
-    await p2;                 // B wins first
-    assert.equal(globalThis._els.dsc_template_text.value, 'B_TEXT');
-    resolveA({ main: 'A_TEXT', A: 'A_TEXT', B: 'B_TEXT' });   // A finally resolves
+    await p2;                 // second sync resolves its fetch first
+    assert.equal(globalThis._els.dsc_template_text.value, 'FRESH_TEXT');
+    resolveFirst();           // the first (now stale) fetch finally resolves
     await p1;
-    // B must still be showing — A is stale.
-    assert.equal(globalThis._els.dsc_template_text.value, 'B_TEXT',
-        'stale template A must not overwrite the currently-shown template B');
+    globalThis.fetch = origFetch;
+    // The stale load must not overwrite the fresh one.
+    assert.equal(globalThis._els.dsc_template_text.value, 'FRESH_TEXT',
+        'stale load must not overwrite the currently-shown template');
 });
 
 test('syncPromptEditor: a missing selected template is kept, NOT rewritten to main', async () => {
@@ -195,8 +198,8 @@ test('syncPromptEditor: a missing selected template is kept, NOT rewritten to ma
     // text is missing from this browser's store. The old fallback rewrote
     // promptTemplate to 'main' AND persisted it (losing the choice globally).
     state.settings.promptTemplate = 'my_vibe';
+    state.settings.promptTemplates = {};
     globalThis._stCtx.extensionSettings.dscomments = { promptTemplate: 'my_vibe' };
-    globalThis.SillyTavern.libs.localforage.getItem = async () => ({});
 
     // DOM select semantics: assigning a value with no matching option yields ''.
     const select = { options: [], innerHTML: '', appendChild(o) { this.options.push(o); } };
@@ -222,26 +225,98 @@ test('syncPromptEditor: a missing selected template is kept, NOT rewritten to ma
 });
 
 describe('savePromptAs: builtin name is reserved (H-N2)', () => {
-    let setItemCalls;
     beforeEach(() => {
-        setItemCalls = [];
-        globalThis.SillyTavern.libs.localforage.getItem = async () => ({});
-        globalThis.SillyTavern.libs.localforage.setItem = async (k, v) => { setItemCalls.push([k, v]); };
-        state.settings.promptTemplate = 'main';
+        state.settings = { promptTemplate: 'main', promptTemplates: {} };
     });
 
-    test("rejects 'main' without writing to localforage", async () => {
+    test("rejects 'main' without touching the template store", async () => {
         const ok = await savePromptAs('main', 'overriding content');
         assert.equal(ok, false, 'builtin name must be rejected');
-        assert.equal(setItemCalls.length, 0, 'no localforage write when name is reserved');
+        assert.deepEqual(state.settings.promptTemplates, {}, 'no store write when name is reserved');
         assert.equal(state.settings.promptTemplate, 'main', 'active template unchanged');
     });
 
-    test('accepts a non-builtin name and persists it', async () => {
+    test('accepts a non-builtin name and persists it into settings', async () => {
         const ok = await savePromptAs('my-vibe', 'content');
         assert.equal(ok, true);
-        assert.equal(setItemCalls.length, 1, 'user template written to localforage');
+        assert.equal(state.settings.promptTemplates['my-vibe'], 'content', 'user template written to settings store');
         assert.equal(state.settings.promptTemplate, 'my-vibe');
+    });
+});
+
+describe('prompt template CRUD lives in the settings store (was localforage)', () => {
+    beforeEach(() => {
+        state.settings = { promptTemplate: 'main', promptTemplates: {} };
+    });
+
+    test('savePromptContent keeps sibling templates and refuses builtin names', async () => {
+        state.settings.promptTemplates = { first: 'ONE' };
+        await savePromptContent('second', 'TWO');
+        assert.deepEqual(state.settings.promptTemplates, { first: 'ONE', second: 'TWO' });
+        assert.equal(await savePromptContent('main', 'X'), false, 'builtin is not writable');
+        assert.equal(state.settings.promptTemplates.main, undefined);
+    });
+
+    test('savePromptContent warns above the soft size limit but still saves', async () => {
+        let toasts = [];
+        globalThis.toastr = { warning: (m) => toasts.push(m) };
+        try {
+            await savePromptContent('big', 'x'.repeat(100_001));
+        } finally {
+            delete globalThis.toastr;
+        }
+        assert.equal(state.settings.promptTemplates.big.length, 100_001, 'save is not blocked');
+        assert.equal(toasts.length, 1, 'user is warned about the size');
+    });
+
+    test('deletePrompt removes the entry and falls back to main when active', async () => {
+        state.settings.promptTemplates = { gone: 'G', kept: 'K' };
+        state.settings.promptTemplate = 'gone';
+        assert.equal(await deletePrompt('gone'), true);
+        assert.deepEqual(state.settings.promptTemplates, { kept: 'K' });
+        assert.equal(state.settings.promptTemplate, 'main', 'active template falls back after delete');
+    });
+});
+
+describe('migrateTemplatesFromLocalforage: one-time import into settings', () => {
+    beforeEach(() => {
+        state.settings = { promptTemplate: 'main', promptTemplates: {} };
+    });
+
+    test('imports legacy localforage templates once', async () => {
+        globalThis.SillyTavern.libs.localforage.getItem = async () => ({ old: 'OLD_TEXT', skip_me: 42, '': 'x' });
+        const n = await migrateTemplatesFromLocalforage();
+        assert.equal(n, 1, 'only string-valued, non-empty names are imported');
+        assert.deepEqual(state.settings.promptTemplates, { old: 'OLD_TEXT' });
+    });
+
+    test('skips the reserved main key and non-string values', async () => {
+        globalThis.SillyTavern.libs.localforage.getItem = async () => ({ main: 'SHADOW', a: 'A', b: null });
+        const n = await migrateTemplatesFromLocalforage();
+        assert.deepEqual(state.settings.promptTemplates, { a: 'A' });
+        assert.equal(n, 1);
+    });
+
+    test('a non-empty settings store is never overwritten (idempotent / other-browser safe)', async () => {
+        state.settings.promptTemplates = { fresh: 'NEW' };
+        globalThis.SillyTavern.libs.localforage.getItem = async () => ({ old: 'OLD_TEXT' });
+        const n = await migrateTemplatesFromLocalforage();
+        assert.equal(n, 0);
+        assert.deepEqual(state.settings.promptTemplates, { fresh: 'NEW' });
+    });
+
+    test('persist failure reverts the in-memory import (retry on next init)', async () => {
+        globalThis.SillyTavern.libs.localforage.getItem = async () => ({ old: 'OLD_TEXT' });
+        const n = await migrateTemplatesFromLocalforage(() => { throw new Error('save failed'); });
+        assert.equal(n, 0);
+        assert.deepEqual(state.settings.promptTemplates, {}, 'store reverted so the next init retries');
+    });
+
+    test('legacy localforage read failure is swallowed (retry on next init)', async () => {
+        globalThis.SillyTavern.libs.localforage.getItem = async () => { throw new Error('storage broken'); };
+        const n = await migrateTemplatesFromLocalforage();
+        assert.equal(n, 0);
+        assert.deepEqual(state.settings.promptTemplates, {});
     });
 });
 

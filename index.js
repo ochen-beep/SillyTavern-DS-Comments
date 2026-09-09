@@ -38,6 +38,7 @@ import {
     syncDomFromState, syncPanelVisibility as syncSettingsSections, FIELD_MAP,
     applyFontSize, applyFontFamily, populateProfiles,
     syncPromptEditor, loadPromptContent, savePromptContent, savePromptAs, deletePrompt, resetPromptToBuiltin,
+    migrateTemplatesFromLocalforage,
     syncNumericInput, createSettingsLorebookLifecycle,
 } from './src/ui/settings-sync.js';
 import { createLorebookPicker } from './src/ui/lorebook-picker.js';
@@ -213,6 +214,12 @@ async function init(isCancelled) {
     const migratedSounds = await migrateCustomSoundsToServer();
     if (isCancelled()) return;
     if (migratedSounds) trace(`sound: migrated ${migratedSounds} custom sound(s) to server storage`);
+    // Lift legacy browser-local prompt templates (localforage) into the
+    // settings store so they survive device/browser changes. Must run BEFORE
+    // the settings panel / prompt editor mount (they read promptTemplates).
+    const migratedTemplates = await migrateTemplatesFromLocalforage();
+    if (isCancelled()) return;
+    if (migratedTemplates) trace(`promptTemplates: migrated ${migratedTemplates} template(s) to settings storage`);
 
     if (!_settingsPanelLoaded) {
         try {
