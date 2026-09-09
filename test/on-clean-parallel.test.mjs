@@ -116,3 +116,17 @@ test('onClean completes and removes keys even when one removeItem rejects', asyn
     }
     assert.ok(!removeCalls.includes(nonTarget), 'non-target key untouched');
 });
+
+test('onClean wipes the settings-side prompt template store and resets the selection', async () => {
+    const { state } = await import('../src/core.js');
+    state.settings.promptTemplate = 'my_vibe';
+    state.settings.promptTemplates = { my_vibe: 'TEXT' };
+    let saved = 0;
+    globalThis._stCtx.saveSettingsDebounced = () => { saved++; };
+
+    await indexModule.onClean();
+
+    assert.deepEqual(state.settings.promptTemplates, {}, 'settings-side template store wiped');
+    assert.equal(state.settings.promptTemplate, 'main', 'selection reset to the builtin main');
+    assert.ok(saved > 0, 'cleanup persisted via saveSettings');
+});

@@ -115,6 +115,16 @@ export async function onClean() {
             saveSettings();
         }
     } catch (e) { error('custom sound cleanup error:', e); }
+    // Prompt templates live in extension settings now; Clean wipes them too —
+    // same semantics as the localforage era (USER_GUIDE documents Clean as
+    // removing templates). The selection falls back to the builtin 'main'.
+    try {
+        state.settings.promptTemplates = {};
+        if (state.settings.promptTemplate && state.settings.promptTemplate !== 'main') {
+            state.settings.promptTemplate = 'main';
+        }
+        saveSettings();
+    } catch (e) { error('prompt templates cleanup error:', e); }
     // Parallel removal: ST's callExtensionHook races every hook against a 5s
     // timeout (extensions.js HOOK_TIMEOUT). A sequenced `await removeItem`
     // loop over many custom sounds can exceed that on slow devices (Termux),
