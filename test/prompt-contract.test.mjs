@@ -49,3 +49,15 @@ test('contract: an embedded JSON example block is present (parseable as array pe
 test('contract example uses realistic count formats ("2.4K" etc.) — guard against edits that drop them', () => {
     assert.ok(PROMPT_CONTRACT.includes('2.4K') || PROMPT_CONTRACT.includes('count'));
 });
+
+test('contract example block must not contain placeholder message content — models echo examples verbatim', () => {
+    const start = PROMPT_CONTRACT.indexOf('Example');
+    const end = PROMPT_CONTRACT.indexOf('## FORMAT RULES');
+    assert.ok(start !== -1 && end > start, 'Example section present before FORMAT RULES');
+    const example = PROMPT_CONTRACT.slice(start, end);
+    // gemini-3.1-pro copied "reply text here" verbatim into every reply of a
+    // real generation (2026-09-08 dump); the example must carry real content.
+    assert.ok(!example.includes('reply text here'), 'reply example must not use the "reply text here" placeholder');
+    assert.ok(!example.includes('message text here'), 'first example must not use the "message text here" placeholder');
+    assert.ok(!example.includes('short 4-8 word fragment'), 'quote example must not use the placeholder fragment');
+});

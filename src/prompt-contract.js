@@ -17,10 +17,10 @@ Generate exactly {{count}} chat messages reacting to the current scene. Use the 
 
 ## OUTPUT FORMAT — respond with ONLY a JSON array. No markdown, no code blocks, no extra text.
 
-Example:
+Example (note: reply's "content" is a real message, and its "quote" is copied from the target's message):
 [
-  {"username": "coder_42", "content": "message text here", "reactions": [{"emoji": "😭", "count": "12"}, {"emoji": "🐈", "count": "25"}]},
-  {"username": "ghost_reader", "content": "reply text here", "reply": {"to": "coder_42", "quote": "short 4-8 word fragment"}, "reactions": [{"emoji": "🙏", "count": "10"}]},
+  {"username": "coder_42", "content": "I can't believe the author just did that", "reactions": [{"emoji": "😭", "count": "12"}, {"emoji": "🐈", "count": "25"}]},
+  {"username": "ghost_reader", "content": "SAME. I had to put my phone down and stare at the wall for a minute", "reply": {"to": "coder_42", "quote": "the author just did that"}, "reactions": [{"emoji": "🙏", "count": "10"}]},
   {"username": "ALLCAPS_CHAOS", "content": "АХАХАХА ОН ЖЕ ПРОСТО КОТ А НЕ ИМПЕРАТОР", "reactions": [{"emoji": "🤣", "count": "45"}, {"emoji": "💀", "count": "20"}]}
 ]
 
@@ -30,7 +30,7 @@ Example:
 - Each object: "username" (required), "content" (required)
 - "content": message text. Can be multi-line with \\n. Can contain markdown, roleplay actions, ANY text
 - "reactions": optional array of {emoji, count} objects — only for messages that genuinely hit
-- "reply": optional object {to, quote} — quote is 4-8 words from target's message
+- "reply": optional object {to, quote} — quote is 4-8 words copied from the target's message; the reply's "content" is the commenter's own real reaction — NEVER a placeholder like "reply text here"
 - Nickname: max 32 chars, NO colons inside nickname
 - Max 1–4 reactions per message — only messages that genuinely hit
 - Counts: realistic numbers like "3", "17", "2.4K" — NOT every message needs reactions

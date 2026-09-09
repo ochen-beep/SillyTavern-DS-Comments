@@ -93,10 +93,13 @@ test('contract example: first message has 2 reactions with expected emojis', () 
     assert.deepEqual(msgs[0].reactions.map(r => r.count), ['12', '25']);
 });
 
-test('contract example: second message replies to coder_42 with a quote', () => {
+test('contract example: second message replies to coder_42 with a quote copied from coder_42\'s content', () => {
     const msgs = parseCommentary(PROMPT_CONTRACT);
     assert.equal(msgs[1].replyTo, 'coder_42');
-    assert.equal(msgs[1].replyQuote, 'short 4-8 word fragment');
+    assert.equal(msgs[1].replyQuote, 'the author just did that');
+    // The quote must be a real fragment of the quoted message, not a
+    // placeholder — models copy example quotes verbatim into feeds.
+    assert.ok(msgs[0].content.includes(msgs[1].replyQuote), 'reply quote is a fragment of the target message');
 });
 
 test('contract example: third message content preserves Cyrillic', () => {
