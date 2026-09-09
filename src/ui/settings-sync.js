@@ -371,6 +371,7 @@ export async function syncPromptEditor() {
     const resetBtn = document.getElementById('dsc_template_reset');
     const cur = state.settings.promptTemplate || 'main';
     const isBuiltin = isBuiltinTemplate(cur);
+    let dangling = false;
 
     if (select) {
         select.innerHTML = '';
@@ -389,15 +390,26 @@ export async function syncPromptEditor() {
         }
         if (req !== _promptEditorReq) return;          // stale — a newer switch won
         select.value = cur;
-        if (!select.value && select.options.length) {
-            select.value = select.options[0].value;
-            state.settings.promptTemplate = select.value;
-            saveSettings();   // persist the fallback so state and disk stay in sync
+        if (cur && !select.value) {
+            // The selected template is missing from the store (cleared browser
+            // storage, or a copy that only exists in another browser). Keep the
+            // user's choice visible and untouched: silently rewriting it to the
+            // first option ('main') used to persist the loss globally.
+            dangling = true;
+            const missing = document.createElement('option');
+            missing.value = cur;
+            missing.textContent = `${cur} · ${tr('not found', 'dscomments.template.notFound')}`;
+            select.appendChild(missing);
+            select.value = cur;
         }
     }
-    const content = await loadPromptContent(cur);
+    const content = dangling ? '' : await loadPromptContent(cur);
     if (req !== _promptEditorReq) return;              // stale — don't overwrite the textarea
-    if (textarea) textarea.value = content || '';
+    if (textarea) {
+        textarea.value = dangling
+            ? tr('Template "{name}" is not available yet. The selection is kept; the text appears once the template exists.', 'dscomments.template.notFoundText').replace('{name}', cur)
+            : (content || '');
+    }
 
     // Buttons: Reset/Del always visible, but disabled for built-ins (layout stable).
     if (delBtn)   { delBtn.hidden = false;   delBtn.disabled = isBuiltin; }

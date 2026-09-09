@@ -8,7 +8,7 @@
  * source block as its own user message (see assemblePrompt).
  */
 
-import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastAIPost, beginGenerationEpoch, isEpochCurrent, LF_PROMPTS, pushRestoreLog, setLastFpDiag, getLastFpDiag, saveSettings } from './core.js';
+import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastAIPost, beginGenerationEpoch, isEpochCurrent, LF_PROMPTS, pushRestoreLog, setLastFpDiag, getLastFpDiag } from './core.js';
 import { PROMPT_CONTRACT } from './prompt-contract.js';
 import { renderMessages } from './renderer.js';
 import { recordEvent } from './event-log.js';
@@ -32,6 +32,15 @@ const _builtinPromptCache = {};
  *
  * @returns {Promise<string>} raw template text
  */
+async function fetchBuiltinPrompt(name) {
+    if (_builtinPromptCache[name]) return _builtinPromptCache[name];
+    const resp = await fetch(`${BASE_URL}/chat-styles/${name}.md`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    _builtinPromptCache[name] = text;
+    return text;
+}
+
 export async function loadStylePrompt() {
     const settings = state.settings;
     const name = settings.promptTemplate || 'main';
@@ -45,21 +54,17 @@ export async function loadStylePrompt() {
     } catch { /* fall through */ }
 
     // 2. Builtin .md (cached) — vibe only, contract lives in code
-    if (_builtinPromptCache[name]) return _builtinPromptCache[name];
     try {
-        const resp = await fetch(`${BASE_URL}/chat-styles/${name}.md`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const text = await resp.text();
-        _builtinPromptCache[name] = text;
-        return text;
+        return await fetchBuiltinPrompt(name);
     } catch (e) {
         warn(`Failed to load prompt template ${name}.md:`, e);
-        // 3. Fallback to main builtin (persisted so the missing template name
-        // does not keep 404ing on every generation).
+        // 3. Transient fallback for THIS generation only. Never rewrite the
+        // user's selection: a template missing in this browser may exist
+        // elsewhere (other browser/device) and reappear later — persisting
+        // 'main' here used to silently destroy the choice on the server.
         if (name !== 'main') {
-            settings.promptTemplate = 'main';
-            saveSettings();
-            return loadStylePrompt();
+            recordEvent('warn', `event=template_missing name=${name} fallback=main(transient)`);
+            try { return await fetchBuiltinPrompt('main'); } catch { return ''; }
         }
         return '';
     }

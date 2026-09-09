@@ -19,7 +19,7 @@ import { setCurrentPost } from '../src/cache.js';
 import { _seedSaveCache, _resetFeedFileStore, getFeedSlot } from '../src/feed-file-store.js';
 import { buildGenerationFingerprint, buildGenerationFingerprintInput } from '../src/lorebooks.js';
 import { createSettingsLorebookLifecycle } from '../src/ui/settings-sync.js';
-import { _testBuildChatHistory, _testBuildLoreScanInput, _testGenerateFeed, getCurrentGenerationFingerprint } from '../src/generator.js';
+import { _testBuildChatHistory, _testBuildLoreScanInput, _testGenerateFeed, getCurrentGenerationFingerprint, loadStylePrompt } from '../src/generator.js';
 
 const ai = (mes, swipe_id = 0, swipes) =>
     swipes ? { mes, is_user: false, is_system: false, is_hidden: false, swipe_id, swipes }
@@ -895,4 +895,28 @@ test('F10: finally does not lower a higher navLockUntil set by the restore path'
 
     assert.ok(state.navLockUntil >= restoreLock,
         `finally must not lower the lock: got ${state.navLockUntil}, restore set ${restoreLock}`);
+});
+
+// ── loadStylePrompt: transient fallback must not rewrite the selection ──
+// Historical bug: a template name missing from this browser's store made the
+// generator persist promptTemplate='main', destroying the user's choice
+// (the template could exist in another browser and reappear later).
+
+test('loadStylePrompt: missing user template falls back to main TRANSIENTLY (no settings write)', async () => {
+    state.settings.promptTemplate = 'my_vibe';
+    globalThis.SillyTavern.libs.localforage.getItem = async () => ({});
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u.includes('/chat-styles/my_vibe.md')) return { ok: false, status: 404, text: async () => '' };
+        if (u.includes('/chat-styles/main.md')) return { ok: true, status: 200, text: async () => 'MAIN_VIBE_TEXT' };
+        return origFetch(url);
+    };
+    try {
+        const text = await loadStylePrompt();
+        assert.equal(text, 'MAIN_VIBE_TEXT', 'generation gets the builtin main vibe');
+        assert.equal(state.settings.promptTemplate, 'my_vibe', 'selection must not be rewritten');
+    } finally {
+        globalThis.fetch = origFetch;
+    }
 });

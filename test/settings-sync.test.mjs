@@ -190,6 +190,37 @@ test('syncPromptEditor: a stale (older) template load does NOT overwrite the tex
         'stale template A must not overwrite the currently-shown template B');
 });
 
+test('syncPromptEditor: a missing selected template is kept, NOT rewritten to main', async () => {
+    // Historical bug: the selection exists in server settings, but the template
+    // text is missing from this browser's store. The old fallback rewrote
+    // promptTemplate to 'main' AND persisted it (losing the choice globally).
+    state.settings.promptTemplate = 'my_vibe';
+    globalThis._stCtx.extensionSettings.dscomments = { promptTemplate: 'my_vibe' };
+    globalThis.SillyTavern.libs.localforage.getItem = async () => ({});
+
+    // DOM select semantics: assigning a value with no matching option yields ''.
+    const select = { options: [], innerHTML: '', appendChild(o) { this.options.push(o); } };
+    Object.defineProperty(select, 'value', {
+        get() { return this.options.some(o => o.value === this._val) ? this._val : ''; },
+        set(v) { this._val = v; },
+        configurable: true,
+    });
+    const origGet = globalThis.document.getElementById;
+    globalThis.document.getElementById = (id) => (id === 'dsc_template' ? select : origGet(id));
+    try {
+        await syncPromptEditor();
+    } finally {
+        globalThis.document.getElementById = origGet;
+    }
+
+    assert.equal(state.settings.promptTemplate, 'my_vibe', 'selection must not be rewritten');
+    assert.equal(globalThis._stCtx.extensionSettings.dscomments.promptTemplate, 'my_vibe',
+        'the fallback must not persist (no saveSettings with main)');
+    assert.ok(select.options.some(o => o.value === 'my_vibe'), 'dangling selection stays visible in the select');
+    assert.equal(select.value, 'my_vibe');
+    assert.ok(globalThis._els.dsc_template_text.value.length > 0, 'textarea shows the not-found notice');
+});
+
 describe('savePromptAs: builtin name is reserved (H-N2)', () => {
     let setItemCalls;
     beforeEach(() => {
