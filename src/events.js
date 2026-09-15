@@ -59,6 +59,14 @@ const _CATCH_UP_MIN_INTERVAL_MS = 200;
 let _initRetryRaf = 0;
 let _initRetries = 0;
 const _INIT_MAX_RETRIES = 30;   // ~0.5s at 60fps — enough for a reveal animation
+// Slow-retry state after the rAF budget is exhausted: the chat may still be
+// hidden behind a closed drawer / slow reveal for seconds. A few spaced-out
+// retries keep scroll-follow alive without spinning forever; any successful
+// attach or a disable/chat-switch teardown resets them.
+let _initGiveUpRetries = 0;
+let _initGiveUpTimer = 0;
+const _INIT_GIVEUP_RETRIES = 4;
+const _INIT_GIVEUP_DELAY_MS = 2500;
 
 /**
  * Initialize IntersectionObserver for scroll-based post tracking.
@@ -71,7 +79,8 @@ export function initPostScrollObserver() {
     if (_scrollRaf) cancelAnimationFrame(_scrollRaf);
     if (_pickRaf) cancelAnimationFrame(_pickRaf);
     if (_suppressedRepickTimer) clearTimeout(_suppressedRepickTimer);
-    _scrollRaf = 0; _pickRaf = 0; _suppressedRepickTimer = 0; _suppressedRepickDueAt = 0;
+    if (_initGiveUpTimer) clearTimeout(_initGiveUpTimer);
+    _scrollRaf = 0; _pickRaf = 0; _suppressedRepickTimer = 0; _suppressedRepickDueAt = 0; _initGiveUpTimer = 0;
     _candidates.clear();
     _lastCatchUpAt = 0;   // allow immediate first-pick catch-up after rebuild
 
@@ -101,6 +110,18 @@ export function initPostScrollObserver() {
                 _initRetryRaf = 0;
                 initPostScrollObserver();
             });
+        } else if (_initGiveUpRetries < _INIT_GIVEUP_RETRIES) {
+            // The fast rAF budget ran out, but the chat may still surface later
+            // (closed drawer revealed seconds after load, slow mobile reveal).
+            // Space out a few last retries instead of staying dead for the
+            // whole session. The next successful attach resets the counter.
+            _initRetries = 0;
+            _initGiveUpRetries++;
+            pushRestoreLog('observer', `give up: scheduling slow retry #${_initGiveUpRetries}/${_INIT_GIVEUP_RETRIES} in ${_INIT_GIVEUP_DELAY_MS}ms`);
+            _initGiveUpTimer = setTimeout(() => {
+                _initGiveUpTimer = 0;
+                if (panelCanObserve()) initPostScrollObserver();
+            }, _INIT_GIVEUP_DELAY_MS);
         } else {
             _initRetries = 0;
             warn('initPostScrollObserver: #chat stayed zero-height, giving up');
@@ -109,6 +130,7 @@ export function initPostScrollObserver() {
         return;
     }
     _initRetries = 0;
+    _initGiveUpRetries = 0;   // chat is laid out — slow-retry budget no longer needed
 
     function resolveEligibleMessage(el, ctx = getCtx()) {
         const msgId = el.getAttribute('mesid');
@@ -339,6 +361,8 @@ function _removeScrollHandler() {
 export function disconnectObservers() {
     if (_initRetryRaf) { cancelAnimationFrame(_initRetryRaf); _initRetryRaf = 0; }
     _initRetries = 0;
+    if (_initGiveUpTimer) { clearTimeout(_initGiveUpTimer); _initGiveUpTimer = 0; }
+    _initGiveUpRetries = 0;
     if (_postScrollObserver) { _postScrollObserver.disconnect(); _postScrollObserver = null; }
     if (_postMutObserver) { _postMutObserver.disconnect(); _postMutObserver = null; }
     _removeScrollHandler();

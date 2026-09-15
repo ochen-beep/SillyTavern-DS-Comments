@@ -121,6 +121,12 @@
     background: rgba(255, 255, 255, 0.06);
 }
 .dsc_indicator.dsc_pinned { color: var(--dsc-accent); }
+/* Soft-stale: cached feed shown, but its generation fingerprint drifted. */
+.dsc_indicator.dsc_stale {
+    color: #e8a13a;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
 .dsc_indicator[hidden] { display: none !important; }
 
 /* ── Buttons ── */

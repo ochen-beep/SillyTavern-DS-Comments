@@ -192,6 +192,32 @@ test('thread serialization: per-thread char budget keeps the newest comments', (
     assert.ok(!parts[0].includes('EARLY_'), 'oldest oversized comments are trimmed first');
 });
 
+test('buildPastCommentParts: a thread of only oversized comments yields no empty block', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('anchor', 0)];
+    seedThread(0, 0, [
+        { username: 'wall', content: 'WALL_'.repeat(500), replyTo: null, replyQuote: null, reactions: [] },   // ~3000 chars — over budget alone
+        { username: 'wall2', content: 'WALL2_'.repeat(500), replyTo: null, replyQuote: null, reactions: [] },
+    ]);
+    state.settings = { includePastComments: true, pastCommentsDepth: 2 };
+
+    assert.deepEqual(_testBuildPastCommentParts('1'), [], 'an unusable thread must not emit a header-only block');
+});
+
+test('buildPastCommentParts: unusable previous-chapter thread leaves only earlier framing', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('p1', 0), ai('anchor', 0)];
+    seedThread(0, 0, threadOf(['a', 'THREAD_OK']));
+    seedThread(1, 0, [
+        { username: 'wall', content: 'WALL_'.repeat(500), replyTo: null, replyQuote: null, reactions: [] },
+    ]);
+    state.settings = { includePastComments: true, pastCommentsDepth: 3 };
+
+    const parts = _testBuildPastCommentParts('2');
+    assert.equal(parts.length, 1, 'only the usable thread survives');
+    assert.match(parts[0], /THREAD_OK/);
+    assert.ok(parts[0].includes('an earlier chapter'), 'framing stays anchored to the surviving thread');
+    assert.ok(!parts[0].includes('the previous chapter'), 'the dropped previous-chapter thread must not reframe the older one');
+});
+
 test('generateFeed stores the parsed thread with the feed entry (saveMode)', async () => {
     setupGeneration();
     await _testGenerateFeed('1', 0, true, async () => JSON.stringify([

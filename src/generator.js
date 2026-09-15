@@ -257,13 +257,20 @@ function buildPastCommentParts(anchorMsgId) {
         { msgId: anchorMsgId, swipeIdx: 0 },
         parseInt(settings.pastCommentsDepth) || 0,
     );
-    return threads.map((thread, index) => {
+    const blocks = [];
+    for (let index = 0; index < threads.length; index++) {
+        const body = serializeThread(threads[index]);
+        // A thread whose every comment exceeds the per-thread budget serializes
+        // to '' — an empty [.. \n] block in the prompt. Skip it instead; the
+        // framing stays anchored to the thread's original position.
+        if (!body) continue;
         const isPrevious = index === threads.length - 1;
         const header = isPrevious
             ? `[Reader comments on the previous chapter — the most recent discussion before this one. The commenters remember what they said there; ongoing arguments and callbacks are welcome, but do NOT react to it as current:`
             : `[Reader comments on an earlier chapter — part of this community's past discussion. The commenters remember it; callbacks and running jokes from it are welcome, but do NOT react to it as current:`;
-        return `${header}\n${serializeThread(thread)}]`;
-    });
+        blocks.push(`${header}\n${body}]`);
+    }
+    return blocks;
 }
 
 // Test-only export (NODE_TEST guard — invisible in the ST browser host).

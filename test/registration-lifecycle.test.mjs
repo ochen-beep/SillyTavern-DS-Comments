@@ -158,3 +158,71 @@ test('snapshot returns copies, not mutable internal collections', () => {
     snap.registeredDebugNames.push('evil');
     assert.deepEqual(controller.snapshot().registeredDebugNames, ['a', 'b', 'c', 'd']);
 });
+
+test('debug callbacks present their result (console + toastr) and pass it through', async () => {
+    const logs = [];
+    const toasts = [];
+    const origLog = console.log;
+    console.log = (...a) => logs.push(a.map(x => String(x)).join(' '));
+    globalThis.toastr = { info: (msg, title) => toasts.push({ msg, title }) };
+    try {
+        const definitions = [
+            { id: 'dump', name: 'Dump', description: 'd', callback: () => ({ ok: true, message: 'RESTORE_LINE_1\nRESTORE_LINE_2' }) },
+        ];
+        let registered = null;
+        const ctx = {
+            registerDebugFunction: (id, name, description, fn) => { registered = { id, name, fn }; },
+        };
+        const controller = createPermanentRegistrationController({
+            getContext: () => ctx,
+            buildSlashCommand: () => ({}),
+            debugDefinitions: () => definitions,
+            warn: () => {},
+        });
+        controller.ensureDebugFunctionsRegistered();
+
+        const result = await registered.fn();
+        // ST's Debug Menu discards the return value — the wrapper must still
+        // pass it through unchanged for any caller that does read it.
+        assert.deepEqual(result, { ok: true, message: 'RESTORE_LINE_1\nRESTORE_LINE_2' });
+        assert.ok(logs.some(l => l.includes('[DS Comments] Dump:') && l.includes('RESTORE_LINE_1')), 'console receives the full dump');
+        assert.equal(toasts.length, 1, 'toastr preview is shown');
+        assert.equal(toasts[0].title, 'Dump');
+        assert.match(toasts[0].msg, /RESTORE_LINE_1/);
+    } finally {
+        console.log = origLog;
+        delete globalThis.toastr;
+    }
+});
+
+test('long debug results are truncated in the toastr preview only', async () => {
+    const logs = [];
+    const toasts = [];
+    const origLog = console.log;
+    console.log = (...a) => logs.push(a.map(x => String(x)).join(' '));
+    globalThis.toastr = { info: (msg, title) => toasts.push({ msg, title }) };
+    try {
+        const longMessage = 'X'.repeat(1000);
+        const definitions = [
+            { id: 'big', name: 'Big', description: 'd', callback: () => ({ ok: true, message: longMessage }) },
+        ];
+        let registered = null;
+        const ctx = { registerDebugFunction: (id, name, description, fn) => { registered = { fn }; } };
+        const controller = createPermanentRegistrationController({
+            getContext: () => ctx,
+            buildSlashCommand: () => ({}),
+            debugDefinitions: () => definitions,
+            warn: () => {},
+        });
+        controller.ensureDebugFunctionsRegistered();
+
+        const result = await registered.fn();
+        assert.equal(result.message.length, 1000, 'full result is untouched');
+        assert.ok(logs.some(l => l.length >= 1000), 'console receives the full text');
+        assert.ok(toasts[0].msg.length < longMessage.length, 'toastr preview is truncated');
+        assert.match(toasts[0].msg, /полный вывод в консоли/);
+    } finally {
+        console.log = origLog;
+        delete globalThis.toastr;
+    }
+});

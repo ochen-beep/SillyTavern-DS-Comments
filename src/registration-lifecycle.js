@@ -35,6 +35,23 @@ export function createPermanentRegistrationController({
         }
     }
 
+    /**
+     * ST's Debug Menu runs the callback and discards its return value
+     * (power-user.js: `functionRecord.func();`), so results never surface by
+     * themselves. Present them the way ST core's own debug functions do: full
+     * dump to the console, short preview via toastr.
+     */
+    function presentDebugResult(name, result) {
+        const message = typeof result === 'string'
+            ? result
+            : (result && typeof result === 'object' && typeof result.message === 'string' ? result.message : '');
+        console.log(`[DS Comments] ${name}:`, message || result);
+        const toastr = globalThis.toastr;
+        if (message && toastr?.info) {
+            toastr.info(message.length > 400 ? `${message.slice(0, 400)} … (полный вывод в консоли)` : message, name);
+        }
+    }
+
     /** Register any not-yet-registered debug functions. Returns true only if all succeeded. */
     function ensureDebugFunctionsRegistered() {
         const { registerDebugFunction } = getContext() || {};
@@ -47,7 +64,11 @@ export function createPermanentRegistrationController({
                     definition.id,
                     definition.name,
                     definition.description,
-                    definition.callback,
+                    async (...args) => {
+                        const result = await definition.callback?.(...args);
+                        presentDebugResult(definition.name, result);
+                        return result;
+                    },
                 );
                 registeredDebugNames.add(definition.id);
             } catch (cause) {
