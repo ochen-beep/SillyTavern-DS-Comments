@@ -16,6 +16,7 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 - Checkpoint/branch isolation: branches and checkpoints get their own feed; only shared-history entries are carried over.
 - Generation sources: a Connection Manager profile or a custom endpoint (URL + API key + optional model ID).
 - Configurable prompt: editable "vibe" templates (character and tone), role, jailbreak block (system / user / assistant-prefill positions), context depth, persona, character description, and world info (lorebooks) with a per-chat scope toggle for the automatic mode (all activation sources, or only the books attached to the chat: character / chat / persona).
+- Community memory (optional): parsed comment threads of preceding posts are injected into the prompt as `[Reader comments ...]` blocks, so regular commenters remember past chapters and keep running arguments. Depth 1–10, active swipe of each past post only, saveMode only; feeds whose context drifted are marked as outdated in the post indicator.
 - Notification sounds: built-in or user-uploaded, stored server-side so they follow your SillyTavern data directory.
 - Touch gestures for switching posts and swipes, quick settings menu, font family/size controls, theme sync.
 - Slash commands: `/dscomments toggle|regenerate|clear`.
@@ -50,9 +51,10 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 
 ## Usage
 
-- The 💬 launcher button in the send form's Quick Reply bar toggles the comments window. With no feed yet, the empty window says so — click it to generate manually.
-- Enable **Auto-update on AI messages** to regenerate commentary after each AI reply.
+- The 💬 launcher button in the send form's Quick Reply bar toggles the comments window. With no feed yet, the empty window says so — click it to generate manually. A floating launcher button (settings → launcher mode) is available if you keep the Quick Reply bar hidden.
+- Enable **Auto-generate for the latest {{char}} message** (settings, or "Auto-update" in the window's quick menu) to regenerate commentary after each AI reply.
 - Every message and swipe keeps its own feed: switching messages or swiping restores the saved feed for that exact variant.
+- Optional **community memory**: with "Past comment threads" enabled (settings → *Display*, next to chat history and persona), commenters reference and continue discussions from preceding posts. Feeds stored before the toggle was enabled (or whose context drifted) keep rendering, but the post indicator marks them as outdated — regenerate to refresh.
 - Gestures: swipe left/right to move between swipes, pull or scroll vertically to move between posts. Quick settings and font controls live in the feed's own menu.
 - Slash commands: `/dscomments toggle` (enable/disable), `/dscomments regenerate` (new commentary for the current message), `/dscomments clear` (drop saved commentary).
 - A detailed Russian guide is available in [USER_GUIDE.md](USER_GUIDE.md).
@@ -64,7 +66,7 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 
 saveMode files are named `dsc_<guid>.json` and are visible among the user's files / Data Bank. A missing or unreadable file is treated as an empty cache; new entries are simply created again. Renaming a chat keeps the GUID bound to the old file. Simultaneous writes from multiple tabs use last-write-wins.
 
-> **About "Clean extension data" (and deleting the extension):** it clears this browser's local stores (no-save feeds, prompt templates, API key, the event log), removes uploaded custom sounds, and deletes the comments file of the **current** chat. Comment files of *other* chats (`dsc_<guid>.json`) stay in the user files — SillyTavern's API does not let an extension enumerate them. Delete those manually via the Data Bank / user files if needed (the exact file name for a chat is shown by the debug menu's DS Comments cache info entry).
+> **About "Clean extension data" (and deleting the extension):** it clears this browser's local stores (no-save feeds, the API key, the event log, leftovers of legacy browser-side templates), removes user prompt templates from the extension settings (the selection resets to the built-in "main"), removes uploaded custom sounds, and deletes the comments file of the **current** chat. Comment files of *other* chats (`dsc_<guid>.json`) stay in the user files — SillyTavern's API does not let an extension enumerate them. Delete those manually via the Data Bank / user files if needed (the exact file name for a chat is shown by the debug menu's DS Comments cache info entry).
 
 Both modes sit behind a mode-agnostic adapter (`storeFeed`/`clearFeed`/`getCurrentFeedSource` in `src/cache.js`).
 
@@ -79,6 +81,7 @@ Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds a
 ## Diagnostics
 
 - The **Export logs (.json)** button in the settings returns diagnostics metadata: a runtime snapshot, the persistent event log, the restore log, and the debug log. Scene text, comment HTML, API keys, the full prompt, and raw responses never enter the dump.
+- The DS Comments entries in SillyTavern's **Debug Menu** (cache info, restore log, debug log, pinned feeds, custom-endpoint request) print their output to the browser console and show a toastr preview — the Debug Menu itself discards return values, so the console is the reliable place to copy from.
 - The persistent event log lives in localforage, survives a page reload, and contains only metadata: ISO timestamps, session ID, chat-switch stages, restores, generations, API stages, parsing, file writes, and errors.
 - The full trace is included in the dump when Debug mode is enabled.
 - In normal mode the browser console stays quiet (one init line, warnings/errors); the success path goes to the debug ring only.
