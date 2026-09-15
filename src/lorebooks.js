@@ -402,7 +402,7 @@ export async function collectAutomaticLore(ctx, { chatMessages, globalScanData, 
 }
 
 /** @param {string} value */
-function hashFingerprint(value) {
+export function hashFingerprint(value) {
     let hash = 0x811c9dc5;
     for (let index = 0; index < value.length; index++) {
         hash ^= value.charCodeAt(index);
@@ -444,6 +444,17 @@ export function buildGenerationFingerprintInput(input = {}) {
         contextDepth,
         includePersona: Boolean(settings.includePersona),
         includeCharacterDescription: Boolean(settings.includeCharacterDescription),
+        // Community-memory inputs. pastCommentsHash covers the CONTENT of the
+        // included threads (the fp must change when a past feed regenerates);
+        // the depth + toggle change which posts are included at all. The hash
+        // is computed by the caller from collectPastCommentThreads output —
+        // pass '' when the feature is off (toggle off / noSaveMode) so the
+        // cached-thread content never leaks into a disabled fp.
+        includePastComments: Boolean(settings.includePastComments) && !settings.noSaveMode,
+        pastCommentsDepth: Number.isFinite(parseInt(settings.pastCommentsDepth))
+            ? Math.max(0, Math.min(10, parseInt(settings.pastCommentsDepth)))
+            : null,
+        pastCommentsHash: normalizeString(input.pastCommentsHash),
         promptTemplate: normalizeString(settings.promptTemplate),
         stylePrompt: normalizeString(input.stylePrompt),
         userCount: Number.isFinite(parsedCount) && parsedCount !== 0 ? parsedCount : 5,
@@ -472,6 +483,11 @@ export function buildGenerationFingerprint(input) {
         contextDepth,
         includePersona: Boolean(source.includePersona),
         includeCharacterDescription: Boolean(source.includeCharacterDescription),
+        includePastComments: Boolean(source.includePastComments),
+        pastCommentsDepth: typeof source.pastCommentsDepth === 'number' && Number.isFinite(source.pastCommentsDepth)
+            ? Math.max(0, Math.min(10, source.pastCommentsDepth))
+            : null,
+        pastCommentsHash: normalizeString(source.pastCommentsHash),
         promptTemplate: normalizeString(source.promptTemplate),
         stylePrompt: normalizeString(source.stylePrompt),
         userCount: Number.isFinite(parsedCount) && parsedCount !== 0 ? parsedCount : 5,

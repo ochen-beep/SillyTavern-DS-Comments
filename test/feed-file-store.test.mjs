@@ -5,7 +5,8 @@ import '../test-helpers/stub-runtime.mjs';
 import { _resetFeedFileStore, _seedMirror, _flushWriteChain, _getLoadedKey, _STORE_VERSION,
     loadFeedStore, getFeedSlot, setFeedSlot, pruneOrphanedEntries, dropSlotEntry,
     clearFeedFile, feedStoreSnapshot, chatFileKey, hashKeyOf,
-    slotKeyOf, hashFingerprint, feedStoreDiagnostics, flushFeedStoreWrites, noteChatRenamed } from '../src/feed-file-store.js';
+    slotKeyOf, hashFingerprint, feedStoreDiagnostics, flushFeedStoreWrites, noteChatRenamed,
+    collectPastCommentThreads, getMirrorRevision } from '../src/feed-file-store.js';
 import { resetCtx } from '../test-helpers/stub-runtime.mjs';
 
 function makeMsg({ mes = 'ai reply', send_date = '2026-08-19T10:00:00.000Z', swipes = null, swipe_info = null, is_user = false } = {}) {
@@ -332,6 +333,116 @@ describe('setFeedSlot / getFeedSlot', () => {
         assert.equal(getFeedSlot('0', 0)?.html, '<i>комментарий</i>');
     });
 
+    test('threads persist alongside html and survive a reload round-trip', async () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        await loadFeedStore();
+        const threads = [{ username: 'nick', content: 'текст', replyTo: null, replyQuote: null, reactions: [] }];
+        assert.equal(setFeedSlot('0', 0, '<p>feed</p>', 'fp-x', threads), true);
+        await _flushWriteChain();
+        _resetFeedFileStore();
+        await loadFeedStore();
+        const entry = getFeedSlot('0', 0);
+        assert.deepEqual(entry?.threads, threads);
+    });
+
+    test('threads=null on write stores null (legacy shape preserved)', async () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        await loadFeedStore();
+        setFeedSlot('0', 0, '<p>feed</p>', 'fp-x', null);
+        assert.equal(getFeedSlot('0', 0)?.threads, null);
+    });
+});
+
+describe('collectPastCommentThreads', () => {
+    test('walks backwards from the anchor over ACTIVE swipes only, oldest first', () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [
+            makeMsg({ send_date: '2026-08-19T10:00:00.001Z', swipe_info: [slotInfo('2026-08-19T10:00:00.001Z'), slotInfo('2026-08-19T10:00:00.011Z')] }),
+            makeMsg({ send_date: '2026-08-19T10:00:00.002Z', swipe_info: [slotInfo('2026-08-19T10:00:00.002Z')] }),
+            makeMsg({ send_date: '2026-08-19T10:00:00.003Z', swipe_info: [slotInfo('2026-08-19T10:00:00.003Z')] }),
+        ];
+        globalThis._stCtx.chat[0].swipe_id = 1;   // active swipe of post 0 is its swipe #1
+        globalThis._stCtx.chatMetadata.dscomments_commentary = { guid: 'gg' };
+        globalThis._stFiles['dsc_gg.json'] = JSON.stringify({
+            v: _STORE_VERSION,
+            entries: {
+                '2026-08-19T10:00:00.001Z': { html: 'side', ts: 1, threads: [{ username: 'sider', content: 'SIDE' }] },
+                '2026-08-19T10:00:00.011Z': { html: 'active0', ts: 1, threads: [{ username: 'a', content: 'T0' }] },
+                '2026-08-19T10:00:00.002Z': { html: 'active1', ts: 1, threads: [{ username: 'b', content: 'T1' }] },
+                '2026-08-19T10:00:00.003Z': { html: 'anchor', ts: 1, threads: [{ username: 'c', content: 'ANCHOR_THREAD' }] },
+            },
+        });
+        // Mirror loaded via seed (loadFeedStore's GC would keep live keys anyway).
+        _seedMirror(JSON.parse(globalThis._stFiles['dsc_gg.json']).entries);
+
+        const threads = collectPastCommentThreads({ msgId: '2', swipeIdx: 0 }, 5);
+        assert.deepEqual(threads.map(t => t.msgId), ['0', '1'], 'oldest first, anchor and future excluded');
+        assert.deepEqual(threads[0].messages, [{ username: 'a', content: 'T0' }], 'ACTIVE swipe thread quoted');
+        assert.ok(!threads.some(t => t.messages.some(m => m.content === 'SIDE')), 'side-swipe thread never included');
+        assert.ok(!threads.some(t => t.messages.some(m => m.content === 'ANCHOR_THREAD')));
+    });
+
+    test('depth caps the result; posts without threads are skipped without spending budget', () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [
+            makeMsg({ send_date: '2026-08-19T10:00:00.001Z', swipe_info: [slotInfo('2026-08-19T10:00:00.001Z')] }),
+            makeMsg({ send_date: '2026-08-19T10:00:00.002Z', swipe_info: [slotInfo('2026-08-19T10:00:00.002Z')] }),
+            makeMsg({ send_date: '2026-08-19T10:00:00.003Z', swipe_info: [slotInfo('2026-08-19T10:00:00.003Z')] }),
+        ];
+        globalThis._stCtx.chatMetadata.dscomments_commentary = { guid: 'gg' };
+        globalThis._stFiles['dsc_gg.json'] = JSON.stringify({
+            v: _STORE_VERSION,
+            entries: {
+                '2026-08-19T10:00:00.001Z': { html: 'a', ts: 1, threads: [{ username: 'a', content: 'T0' }] },
+                '2026-08-19T10:00:00.003Z': { html: 'c', ts: 1, threads: [{ username: 'c', content: 'T2' }] },
+                // post 1: no entry → no thread
+            },
+        });
+        _seedMirror(JSON.parse(globalThis._stFiles['dsc_gg.json']).entries);
+
+        // post 1 (key …002Z) has NO entry → skipped without spending budget.
+        // Depth caps the thread COUNT, not the scan range.
+        assert.deepEqual(collectPastCommentThreads({ msgId: '2', swipeIdx: 0 }, 5).map(t => t.msgId), ['0'], 'only post 0 carries a thread');
+        assert.deepEqual(collectPastCommentThreads({ msgId: '2', swipeIdx: 0 }, 1).map(t => t.msgId), ['0'], 'depth=1 still finds the nearest AVAILABLE thread (post 1)');
+        assert.deepEqual(collectPastCommentThreads({ msgId: '2', swipeIdx: 0 }, 0), []);
+    });
+
+    test('user/system/hidden messages are skipped; no mirror → empty', () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [
+            { ...makeMsg({ send_date: '2026-08-19T10:00:00.001Z', swipe_info: [slotInfo('2026-08-19T10:00:00.001Z')] }), is_user: true },
+            makeMsg({ send_date: '2026-08-19T10:00:00.002Z', swipe_info: [slotInfo('2026-08-19T10:00:00.002Z')], is_hidden: true }),
+            makeMsg({ send_date: '2026-08-19T10:00:00.003Z', swipe_info: [slotInfo('2026-08-19T10:00:00.003Z')] }),
+        ];
+        _seedMirror({
+            '2026-08-19T10:00:00.003Z': { html: 'c', ts: 1, threads: [{ username: 'c', content: 'T2' }] },
+        });
+        assert.deepEqual(collectPastCommentThreads({ msgId: '2', swipeIdx: 0 }, 5), []);
+
+        _resetFeedFileStore();
+        globalThis._stCtx.chat = [makeMsg({ send_date: '2026-08-19T10:00:00.001Z', swipe_info: [slotInfo('2026-08-19T10:00:00.001Z')] })];
+        assert.deepEqual(collectPastCommentThreads({ msgId: '1', swipeIdx: 0 }, 5), [], 'no mirror (noSave/start) → no threads');
+    });
+
+    test('mirror revision bumps on write and reset, and is stable across reads', () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        _resetFeedFileStore();
+        const rev0 = getMirrorRevision();
+        _seedMirror({});
+        const rev1 = getMirrorRevision();
+        setFeedSlot('0', 0, 'x');
+        setFeedSlot('0', 0, 'y');
+        const rev2 = getMirrorRevision();
+        assert.ok(rev1 > rev0, 'load/seed bumps the revision');
+        assert.ok(rev2 > rev1, 'each write bumps the revision');
+        assert.equal(getMirrorRevision(), rev2, 'reads do not bump');
+    });
+});
+
+describe('setFeedSlot / getFeedSlot — html round-trips (continued)', () => {
     test('cyrillic html survives base64 round-trip', async () => {
         globalThis._stCtx.chatId = 'c1';
         globalThis._stCtx.chat = [makeMsg({ mes: 'привет', swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];

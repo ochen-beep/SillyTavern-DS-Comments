@@ -61,3 +61,14 @@ test('contract example block must not contain placeholder message content — mo
     assert.ok(!example.includes('message text here'), 'first example must not use the "message text here" placeholder');
     assert.ok(!example.includes('short 4-8 word fragment'), 'quote example must not use the placeholder fragment');
 });
+
+test('contract documents the past-comment community-memory blocks', () => {
+    // The generator emits "[Reader comments on the previous chapter]" /
+    // "[Reader comments on an earlier chapter]" blocks (generator.js). The
+    // contract must tell the model how to treat them — otherwise past
+    // discussions leak into the raw reactions aimed at the current chapter.
+    assert.match(PROMPT_CONTRACT, /\[Reader comments on the previous chapter\]/);
+    assert.match(PROMPT_CONTRACT, /\[Reader comments on an earlier chapter\]/);
+    assert.match(PROMPT_CONTRACT, /remember what was said there/);
+    assert.match(PROMPT_CONTRACT, /still belong only to the `\[Current chapter\]`/);
+});

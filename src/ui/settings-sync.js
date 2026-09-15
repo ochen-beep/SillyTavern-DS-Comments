@@ -23,6 +23,8 @@ const FIELD_MAP = {
     dsc_hist:           { prop: 'includeChatHistory',          type: 'checkbox' },
     dsc_persona:        { prop: 'includePersona',              type: 'checkbox' },
     dsc_chardesc:       { prop: 'includeCharacterDescription', type: 'checkbox' },
+    dsc_pastcom:        { prop: 'includePastComments',         type: 'checkbox' },
+    dsc_pastcom_depth:  { prop: 'pastCommentsDepth',           type: 'number' },
     dsc_fontfam:        { prop: 'fontFamily',                  type: 'select' },
     dsc_fontsize:       { prop: 'fontSize',                    type: 'number' },
     dsc_launcher_mode:  { prop: 'launcherMode',                type: 'select' },
@@ -120,6 +122,7 @@ export function syncDomFromState() {
 export function syncPanelVisibility() {
     updateSourceFieldsVisibility();
     updateDepthVisibility();
+    updatePastCommentsVisibility();
     updateJailbreakVisibility();
     // Sound body: on load unhide it when sound is enabled, otherwise the slider/
     // list/test button stay invisible even though the checkbox is checked.
@@ -199,6 +202,11 @@ export function updateSourceFieldsVisibility() {
 function updateDepthVisibility() {
     const el = document.getElementById('dsc_depth_group');
     if (el) el.hidden = !state.settings.includeChatHistory;
+}
+
+function updatePastCommentsVisibility() {
+    const el = document.getElementById('dsc_pastcom_group');
+    if (el) el.hidden = !state.settings.includePastComments;
 }
 
 function updateJailbreakVisibility() {

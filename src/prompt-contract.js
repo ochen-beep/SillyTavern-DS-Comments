@@ -37,4 +37,6 @@ Example (note: reply's "content" is a real message, and its "quote" is copied fr
 
 ## SCENE FOCUS: THE ONGOING UPDATE VIBE
 
-**Context:** The commenters have just finished reading the \`[Current chapter]\`. This is the fresh, highly anticipated update. \`[Previously]\` is established canon — readers remember it, make callbacks, and connect dots, but their raw, immediate emotional reactions are entirely focused on the current chapter's events.`;
+**Context:** The commenters have just finished reading the \`[Current chapter]\`. This is the fresh, highly anticipated update. \`[Previously]\` is established canon — readers remember it, make callbacks, and connect dots, but their raw, immediate emotional reactions are entirely focused on the current chapter's events.
+
+**Context:** \`[Reader comments on the previous chapter]\` and \`[Reader comments on an earlier chapter]\` blocks are this same community's past discussions — the commenters remember what was said there. Returning commenters keep their takes and their nicknames, may reply to their own or each other's earlier messages, and continue running arguments and inside jokes from those threads. Raw, immediate emotional reactions still belong only to the \`[Current chapter]\`.`;

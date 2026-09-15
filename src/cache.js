@@ -57,7 +57,7 @@ export function getCachedPost(msgId, swipeIdx, generationFp) {
 export async function getCachedPostForCurrentGeneration(msgId, swipeIdx) {
     if (!_getGenerationFingerprint) return null;
     try {
-        const generationFp = await _getGenerationFingerprint(getCtx());
+        const generationFp = await _getGenerationFingerprint(getCtx(), msgId);
         return getCachedPost(msgId, swipeIdx, generationFp);
     } catch (e) {
         warn('getCachedPostForCurrentGeneration error:', e);
@@ -65,7 +65,7 @@ export async function getCachedPostForCurrentGeneration(msgId, swipeIdx) {
     }
 }
 
-export function saveGeneratedCommentary(html, msgId, swipeIdx, generationFp) {
+export function saveGeneratedCommentary(html, msgId, swipeIdx, generationFp, messages = null) {
     try {
         const ctx = getCtx();
         if (!ctx.chatMetadata || !ctx.chatId) {
@@ -75,7 +75,7 @@ export function saveGeneratedCommentary(html, msgId, swipeIdx, generationFp) {
         const mid  = String(msgId       !== undefined ? msgId       : state.currentPostId  ?? 'legacy');
         const sidx = parseInt(swipeIdx !== undefined ? swipeIdx : state.currentSwipeIdx ?? 0);
 
-        if (!setFeedSlot(mid, sidx, html, generationFp ?? null)) {
+        if (!setFeedSlot(mid, sidx, html, generationFp ?? null, messages)) {
             warn(`saveGeneratedCommentary: slot #${mid}[${sidx}] unusable — save skipped`);
             return;
         }
@@ -133,7 +133,7 @@ export async function selectCommentaryTarget(msgId, swipeIdx, options = {}) {
         let fingerprintResolved = false;
         try {
             if (_getGenerationFingerprint) {
-                generationFp = await _getGenerationFingerprint(ctxSnapshot);
+                generationFp = await _getGenerationFingerprint(ctxSnapshot, mid);
                 fingerprintResolved = true;
             }
         } catch (e) {
@@ -458,7 +458,7 @@ export async function getCurrentFeed() {
     }
     if (!ctx.chatId) return null;   // save mode: chatMetadata is bound to a real chat
     if (!_getGenerationFingerprint) return null;
-    const generationFp = await _getGenerationFingerprint(ctx);
+    const generationFp = await _getGenerationFingerprint(ctx, state.currentPostId ?? undefined);
     const html = getCachedPost(state.currentPostId, state.currentSwipeIdx, generationFp);
     return html
         ? { html, msgId: String(state.currentPostId), swipeIdx: state.currentSwipeIdx }
@@ -469,9 +469,12 @@ export async function getCurrentFeed() {
  * Store a freshly generated feed (mode-agnostic).
  * In noSaveMode it replaces the old feed in the Map (invariant: one per chat).
  * In saveMode it calls saveGeneratedCommentary + saveMetadata.
+ * `messages` is the parsed comment array from the parser; saveMode persists it
+ * alongside the html so future generations can quote this thread as community
+ * memory (generator.buildPastCommentParts). noSave ignores it.
  * @sideEffect updates the post indicator to reflect the new source.
  */
-export function storeFeed(html, msgId, swipeIdx, generationFp) {
+export function storeFeed(html, msgId, swipeIdx, generationFp, messages = null) {
     if (state.settings.noSaveMode) {
         const ctx = getCtx();
         const chatId = noSaveKey(ctx);
@@ -486,7 +489,7 @@ export function storeFeed(html, msgId, swipeIdx, generationFp) {
         recordEvent('log', `storeFeed: pinned #${msgId}[${swipeIdx}] ${where} (${html.length} chars)`);
         schedulePinnedPersist(state.pinnedFeeds);
     } else {
-        saveGeneratedCommentary(html, msgId, swipeIdx, generationFp);
+        saveGeneratedCommentary(html, msgId, swipeIdx, generationFp, messages);
     }
     updatePostIndicator();
 }

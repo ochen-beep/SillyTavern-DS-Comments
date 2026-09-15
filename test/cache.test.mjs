@@ -282,6 +282,29 @@ test('selectCommentaryTarget returns hit and renders the exact cached target', a
     assert.equal(state.currentPostId, '2');
 });
 
+test('restore passes the anchor msgId to the fingerprint provider (anchor-aware fp)', async () => {
+    // With includePastComments on, the fp depends on WHICH post is being
+    // restored (its past-thread set). The restore path must supply the anchor,
+    // otherwise feature-on restores would compute a thread-less fp and label
+    // every cached feed soft-stale.
+    const ctx = getCtx();
+    ctx.chat = [null, null, { mes: 'post', is_user: false, is_system: false, swipe_id: 0, swipes: ['post'] }];
+    _seedSaveCache({
+        '2': { '0': { html: '<p>anchored commentary</p>', timestamp: 100, generationFp: 'fp-anchor-2' } },
+    });
+    const seenAnchors = [];
+    initCacheRestore({ getGenerationFingerprint: async (_ctx, anchorMsgId) => {
+        seenAnchors.push(anchorMsgId);
+        return 'fp-anchor-2';
+    } });
+
+    const result = await selectCommentaryTarget('2', 0);
+
+    assert.deepEqual(seenAnchors, ['2'], 'fingerprint provider receives the anchor msgId');
+    assert.equal(result.status, 'hit');
+    assert.match(feed.innerHTML, /anchored commentary/);
+});
+
 test('selectCommentaryTarget reads the current entry after fingerprint resolution', async () => {
     const ctx = getCtx();
     ctx.chat = [null, null, { mes: 'post', is_user: false, is_system: false, swipe_id: 0, swipes: ['post'] }];

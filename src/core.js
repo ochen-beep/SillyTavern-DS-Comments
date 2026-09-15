@@ -58,6 +58,10 @@ export const defaultSettings = Object.freeze({
     includeUser: false,               // include user persona in context
     includePersona: false,
     includeCharacterDescription: false,
+    // community memory: include cached comment threads of preceding AI posts
+    // (active swipe of each past post) as [Reader comments on ...] blocks
+    includePastComments: false,
+    pastCommentsDepth: 2,             // how many past posts' threads to include (max)
 
     // prompt template: builtin 'main' (chat-styles/main.md — vibe) + user copies.
     // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
@@ -333,6 +337,7 @@ export const NUMERIC_SETTINGS = Object.freeze({
     userCount:    Object.freeze({ min: 1, max: 100, fallback: 5 }),
     fontSize:     Object.freeze({ min: 8, max: 32, fallback: 15 }),
     contextDepth: Object.freeze({ min: 2, max: 50, fallback: 4 }),
+    pastCommentsDepth: Object.freeze({ min: 1, max: 10, fallback: 2 }),
     soundVolume:  Object.freeze({ min: 0, max: 100, fallback: 30 }),
 });
 

@@ -47,6 +47,11 @@ let _loadedKey = null;         // file key the mirror was loaded for
 let _loadedChatId = null;
 let _loadSequence = 0;
 let _writeChain = Promise.resolve();
+// Monotonic revision of the in-memory mirror: bumped on every load and every
+// mirror mutation. The generator's fingerprint cache keys on it — threads
+// become part of the generation fp, and a regenerate of an older post must
+// invalidate the cached fp without a full epoch bump.
+let _mirrorRevision = 0;
 const _storageDiag = {
     lastOperation: null,
     loaded: false,
@@ -322,6 +327,7 @@ export async function loadFeedStore() {
     }
     if (sequence !== _loadSequence) return;
     _mirror = doc ? { entries: doc.entries } : emptyMirror();
+    _mirrorRevision++;
     _loadedKey = mainKey;
     _loadedChatId = ctx.chatId;
     // Retire the fallback file after its content is safely under the guid key.
@@ -452,7 +458,7 @@ export function getFeedSlot(msgId, swipeIdx) {
  * Mints + persists the chat guid on first write.
  * @returns {boolean} whether the write landed in the mirror.
  */
-export function setFeedSlot(msgId, swipeIdx, html, generationFp = null) {
+export function setFeedSlot(msgId, swipeIdx, html, generationFp = null, threads = null) {
     const ctx = getCtx();
     // A render from a newly opened chat must never write through the previous
     // chat's mirror while its CHAT_CHANGED load is still in flight.
@@ -488,7 +494,13 @@ export function setFeedSlot(msgId, swipeIdx, html, generationFp = null) {
         ts: Date.now(),
         fp: hashFingerprint(text ?? ''),
         generationFp: generationFp ?? null,
+        // Parsed comment thread of this feed (active swipe only). Lets future
+        // generations quote the community's past discussion without reverse-
+        // parsing the rendered HTML. Absent → thread unknown (legacy entries,
+        // noSave pins, parsers that never ran).
+        threads: Array.isArray(threads) && threads.length ? threads : null,
     };
+    _mirrorRevision++;
     if (minted) persistChatMetadata(ctx);
     schedulePersist({ ctx, key: _loadedKey ?? chatFileKey(ctx), mirror: _mirror });
     return true;
@@ -601,6 +613,7 @@ function migrateV1Posts(ctx) {
                 ts: typeof entry.timestamp === 'number' ? entry.timestamp : Date.now(),
                 fp: entry.fp ?? (text !== null ? hashFingerprint(text) : undefined),
                 generationFp: entry.generationFp ?? null,
+                threads: Array.isArray(entry.threads) && entry.threads.length ? entry.threads : null,
             };
             lifted++;
         }
@@ -643,6 +656,52 @@ function validPayload(p) {
 registerFeedStoreSnapshot(() => feedStoreSnapshot());
 registerFeedStoreDiagnostics(() => feedStoreDiagnostics());
 
+/**
+ * Parsed comment threads of the past AI posts, oldest first, for the
+ * community-memory prompt blocks. Active swipe of each post only (side
+ * swipes are alternate realities, not community history — same rule as
+ * [Previously], which reads msg.mes). Walks backwards from the anchor,
+ * stops at the requested count, skips posts without a cached parsed
+ * thread without spending the budget. null → feature unavailable for
+ * this chat (noSave mode has no per-post history).
+ *
+ * @param {{ msgId: string|number, swipeIdx: number }} anchor post being commented on
+ * @param {number} maxThreads maximum threads to include
+ * @returns {Array<{ msgId: string, swipeIdx: number, messages: Array<object> }>} oldest first
+ */
+export function collectPastCommentThreads(anchor, maxThreads) {
+    const ctx = getCtx();
+    const chat = ctx?.chat;
+    if (!_mirror || !Array.isArray(chat)) return [];
+    const limit = Math.max(0, Math.min(10, Math.trunc(maxThreads) || 0));
+    if (!limit) return [];
+    const anchorIdx = parseInt(String(anchor?.msgId ?? ''), 10);
+    if (!Number.isInteger(anchorIdx)) return [];
+
+    const threads = [];
+    // Strictly before the anchor: the anchor's own (being-replaced) feed and
+    // everything after it is "the future" from the commenters' viewpoint.
+    for (let i = anchorIdx - 1; i >= 0 && threads.length < limit; i--) {
+        const msg = chat[i];
+        if (!msg || msg.is_user || msg.is_system || msg.is_hidden) continue;
+        const swipeIdx = typeof msg.swipe_id === 'number' ? msg.swipe_id : 0;
+        const key = slotKeyOf(msg, swipeIdx);
+        if (!key) continue;
+        const entry = _mirror.entries[key];
+        // No parsed thread → post skipped entirely (no budget spent): a feed
+        // generated before this feature existed has html but no threads.
+        if (!entry || !Array.isArray(entry.threads) || !entry.threads.length) continue;
+        threads.push({ msgId: String(i), swipeIdx, messages: entry.threads });
+    }
+    threads.reverse();   // oldest first — matches the [Previously] reading order
+    return threads;
+}
+
+/** Mirror revision for the generator's fingerprint cache key. */
+export function getMirrorRevision() {
+    return _mirrorRevision;
+}
+
 // ── Test-only surface ──
 
 export function _resetFeedFileStore() {
@@ -651,11 +710,13 @@ export function _resetFeedFileStore() {
     _loadedChatId = null;
     _loadSequence = 0;
     _writeChain = Promise.resolve();
+    _mirrorRevision = 0;
     Object.assign(_storageDiag, { lastOperation: null, loaded: false, result: null, file: null, entryCount: 0, gcDropped: 0, at: null, error: null });
 }
 
 export function _seedMirror(entries) {
     _mirror = { entries: entries ?? {} };
+    _mirrorRevision++;
     _loadedKey = chatFileKey(getCtx());
 }
 
@@ -690,6 +751,7 @@ export function _seedSaveCache(postsByMsgId, chat = getCtx()?.chat) {
                 ts: entry?.timestamp ?? Date.now(),
                 fp: entry?.fp,
                 generationFp: entry?.generationFp ?? null,
+                threads: Array.isArray(entry?.threads) && entry.threads.length ? entry.threads : null,
             };
         }
     }

@@ -492,7 +492,10 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         let fingerprintResolved = Boolean(getGenerationFingerprint);
         if (!state.settings.noSaveMode && getGenerationFingerprint) {
             try {
-                generationFp = await getGenerationFingerprint(ctx2);
+                // Anchor-aware: with includePastComments on, the fp includes
+                // this post's past-thread set, matching what generateFeed will
+                // store — otherwise the pre-check could never cache-hit.
+                generationFp = await getGenerationFingerprint(ctx2, msgIdStr);
             } catch (cause) {
                 fingerprintResolved = false;
                 warn('getGenerationFingerprint callback error:', cause);

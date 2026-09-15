@@ -608,6 +608,7 @@ function bindSettingsPanelEvents() {
 
         // Section visibility follow-ups
         if (el.id === 'dsc_hist') syncSettingsSections();
+        if (el.id === 'dsc_pastcom') syncSettingsSections();
         if (el.id === 'dsc_jb_enable') syncSettingsSections();
         if (el.id === 'dsc_sound_enable') {
             document.getElementById('dsc_sound_body').hidden = !el.checked;

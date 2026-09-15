@@ -2,9 +2,10 @@
 
 > Карта репозитория для работы агента/разработчика. Обновлять при существенных изменениях.
 > Разведка: **2026-09-09** · Расширение **v0.10.0** (`manifest.json:8`) · `minimum_client_version: 1.18.0` (`manifest.json:11`)
-> Проверено: `npm test` — **549 pass / 0 fail** (node --test, ~0.8 с, NODE_TEST=1). Незакоммиченный diff: `src/prompt-contract.js` + 2 теста (замена плейсхолдеров в JSON-примере контракта на реальный текст — см. §6).
+> Проверено: `npm test` — **580 pass / 0 fail** (node --test, ~0.8 с, NODE_TEST=1).
 > Deep-dive документы: `docs/deep-dive-prompt-system.md` (система промптов: вайб/контракт/сборка/отправка, 2026-09-09).
 > Реализовано 2026-09-09: выбор шаблона больше не сбрасывается сам (фолбэки без персиста, `cc6bc75`); тексты шаблонов перенесены из localforage в extensionSettings + миграция (`a88dc9f`); onClean чистит новое хранилище (`b0e12b3`).
+> Реализовано 2026-09-12: **память комьюнити** — галочка «Комментарии прошлых постов» (`includePastComments` + `pastCommentsDepth`): распарсенные треды комментариев прошлых AI-постов (только активный свайп) сериализуются в user-сообщения `[Reader comments on the previous chapter / an earlier chapter]` между `[Previously]` и якорем. Хранение: `threads` в записи фида (`feed-file-store.setFeedSlot`, поле опционально — legacy-записи просто пропускаются); fingerprint расширен `includePastComments/pastCommentsDepth/pastCommentsHash` (хэш СОДЕРЖИМОГО тредов — реген старого поста делает последующие фиды soft-stale); fp-кэш ключ = (epoch, chatId, settingsKey, **mirrorRevision**, anchor); `getGenerationFingerprint(ctx, anchorMsgId)` — якорь опционален (все вызовы в cache.js/events.js прокидывают якорь); noSaveMode фича выключена; бюджет 2000 символов на тред (выживают новейшие комментарии); контракт дополнен абзацем про `[Reader comments ...]` (синхронно с prompt-contract.test).
 
 ## 1. Назначение
 
@@ -26,9 +27,9 @@ SillyTavern-расширение: генерирует «дискорд-лент
 | `src/connection.js` | Источник «профиль»: `ConnectionManagerRequestService.sendRequest` (`connection.js:137-140`), normalize ошибок abort (`connection.js:141-151`), `extractTextFromResponse` для 4 форм ответов (`connection.js:167-196`). Источник «custom»: OpenAI-совместимый fetch с CORS-оговоркой, классификация URL, подтверждение insecure HTTP per-origin (`connection.js:229-287`), таймаут 5 мин, debug-слот `lastCustomEndpointDebug` |
 | `src/parser.js` | JSON-парсер с починкой: strip `<think>`, BOM, ```-заборы → 4 эскалации (direct → repair → извлечение `{…}` по одному → обрезанный хвост) (`parser.js:213-321`) |
 | `src/renderer.js` | Сообщения ленты: hash-hue градиентные ники, reply-бар, реакции, mini-markdown; sanitize до/после |
-| `src/prompt-contract.js` | НЕИЗМЕНЯЕМЫЙ контракт промпта (JSON-формат для парсера) в коде; редактируемый «вайб» — в `chat-styles/*.md`/localforage |
+| `src/prompt-contract.js` | НЕИЗМЕНЯЕМЫЙ контракт промпта (JSON-формат для парсера) в коде; редактируемый «вайб» — в `chat-styles/*.md`/localforage; SCENE FOCUS описывает и `[Reader comments on ...]`-блоки памяти комьюнити |
 | `src/cache.js` | Mode-agnostic адаптер фида: `storeFeed`/`clearFeed`/`getCurrentFeed`/`showCurrentFeed` (`cache.js:474-576`), `selectCommentaryTarget` (суперсеед-гарды: sequence + chatId + epoch, `cache.js:89-189`), `resolvePreferredCommentaryTarget` (лучший видимый пост DOM → state → последний AI, `cache.js:275-313`), индикатор `#dscIndicator` |
-| `src/feed-file-store.js` | **saveMode-хранилище**: один JSON на чат на сервере `data/<user>/user/files/dsc_<guid>.json`; ключ записи = `send_date` свайп-слота (`feed-file-store.js:399-410`); in-memory зеркало + сериализованная цепочка upload (`schedulePersist`, `feed-file-store.js:355-377`); guid и fork-маркеры в `chatMetadata[META_KEY]`; форк/чекпоинт-изоляция (`feed-file-store.js:134-158`); миграция v1 (chatMetadata.posts → файл, `feed-file-store.js:582-635`); GC по живым слотам |
+| `src/feed-file-store.js` | **saveMode-хранилище**: один JSON на чат на сервере `data/<user>/user/files/dsc_<guid>.json`; ключ записи = `send_date` свайп-слота (`feed-file-store.js:399-410`); запись = {html, ts, fp, generationFp, threads?} — threads это распарсенный тред комментариев (для памяти комьюнити, без него пост пропускается при сборке); in-memory зеркало + сериализованная цепочка upload (`schedulePersist`, `feed-file-store.js:355-377`) + `_mirrorRevision` (счётчик мутаций, компонент fp-кэш-ключа генератора); `collectPastCommentThreads(anchor, max)` — треды прошлых постов назад от якоря (активный свайп, oldest first); guid и fork-маркеры в `chatMetadata[META_KEY]`; форк/чекпоинт-изоляция (`feed-file-store.js:134-158`); миграция v1 (chatMetadata.posts → файл, `feed-file-store.js:582-635`); GC по живым слотам |
 | `src/pinned-store.js` | **noSave-хранилище**: `state.pinnedFeeds` (Map chatId→feed) → localforage `LF_PINNED`; немедленные записи через promise-chain, LRU 32 чата |
 | `src/lorebooks.js` | Per-chat конфиг лора в `chatMetadata['dscomments_lorebook']`; manual (точечные uid) и automatic (dry-run `getWorldInfoPrompt` **всегда isDryRun=true** + векторные записи из WORLD_INFO_ACTIVATED-cache, привязанного к якорю) (`lorebooks.js:352-402`); fingerprint-контракт autoScope (`lorebooks.js:103-111`) |
 | `src/sound.js` | Звук: builtin из `sounds/`, кастомные — серверно (`dsc_sound_custom_N.<ext>` через user-files), миграция старых blob'ов из localforage |
@@ -54,7 +55,7 @@ SillyTavern-расширение: генерирует «дискорд-лент
 | `settings.html` | Скелет панели настроек (рендер через `ctx.renderExtensionTemplateAsync('third-party/<FOLDER_NAME>', 'settings')`, `index.js:220`) |
 | `style.css` | Токены от `--SmartTheme*`, `#dscWindow` z-2998, FAB z-2999, ниже ST-хрома (3000/3005); `@supports` relative-color фолбэк |
 | `chat-styles/main.md` | Вайб «фандомные комментарии» на `{{random::}}` |
-| `test/` (39 файлов, 549 тестов), `test-helpers/`, `scripts/run-tests.mjs` | node:test, NODE_TEST=1 открывает `_test*`-экспорты; CI: `.github/workflows/tests.yml` |
+| `test/` (39 файлов, 580 тестов), `test-helpers/`, `scripts/run-tests.mjs` | node:test, NODE_TEST=1 открывает `_test*`-экспорты; CI: `.github/workflows/tests.yml` |
 
 ## 4. Интеграции с SillyTavern
 

@@ -40,6 +40,17 @@ test('settings.html removes local token budget controls and caps context depth a
     assert.match(html, /id="dsc_depth"[^>]*max="50"/);
 });
 
+test('settings.html keeps the past-comment threads control after Character description', () => {
+    const pastIdx = html.indexOf('id="dsc_pastcom"');
+    const charIdx = html.indexOf('id="dsc_chardesc"');
+    const loreIdx = html.indexOf('id="dsc_lore_enable"');
+    assert.ok(pastIdx !== -1, 'past-comments checkbox present');
+    assert.ok(charIdx !== -1 && pastIdx > charIdx, 'checkbox sits after Character description');
+    assert.ok(loreIdx !== -1 && pastIdx < loreIdx, 'checkbox sits before World information');
+    assert.ok(html.includes('id="dsc_pastcom_group"'), 'dependent depth group present');
+    assert.match(html, /id="dsc_pastcom_depth"[^>]*max="10"/, 'depth capped at 10');
+});
+
 test('every settings data-i18n key is present in the Russian locale', () => {
     const raw = [...html.matchAll(/data-i18n="([^"]+)"/g)].map(match => match[1]);
     assert.ok(raw.length > 0, 'settings.html must contain data-i18n attributes');

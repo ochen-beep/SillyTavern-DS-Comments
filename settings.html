@@ -125,6 +125,12 @@
                 </div>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_persona" class="checkbox"> <span data-i18n="dscomments.settings.persona">Persona</span></label>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_chardesc" class="checkbox"> <span data-i18n="dscomments.settings.character">Character description</span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_pastcom" class="checkbox"> <span data-i18n="dscomments.settings.pastComments">Past comment threads</span></label>
+                <div id="dsc_pastcom_group" hidden>
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.pastCommentsDepth">Past posts included</span>
+                    <input type="number" id="dsc_pastcom_depth" class="dsc_input dsc_input_num" min="1" max="10" value="2">
+                    <small class="dsc_hint" data-i18n="dscomments.settings.pastCommentsHint">Comment threads of the preceding posts are added to the context as community memory (active swipe of each post; save-mode chats only).</small>
+                </div>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_lore_enable" class="checkbox"> <span data-i18n="dscomments.settings.lore">World information</span></label>
                 <div id="dsc_lore_group" hidden>
                     <div class="dsc_seg" id="dsc_lore_mode">

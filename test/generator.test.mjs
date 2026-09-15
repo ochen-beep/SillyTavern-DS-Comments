@@ -17,9 +17,9 @@ import path from 'node:path';
 import { state, bumpGenerationEpoch, dumpDebugLog, clearDebugLog } from '../src/core.js';
 import { setCurrentPost } from '../src/cache.js';
 import { _seedSaveCache, _resetFeedFileStore, getFeedSlot } from '../src/feed-file-store.js';
-import { buildGenerationFingerprint, buildGenerationFingerprintInput } from '../src/lorebooks.js';
+import { buildGenerationFingerprint, buildGenerationFingerprintInput, getChatLoreConfig } from '../src/lorebooks.js';
 import { createSettingsLorebookLifecycle } from '../src/ui/settings-sync.js';
-import { _testBuildChatHistory, _testBuildLoreScanInput, _testGenerateFeed, getCurrentGenerationFingerprint, loadStylePrompt } from '../src/generator.js';
+import { _testBuildChatHistory, _testBuildLoreScanInput, _testBuildPastCommentParts, _testGenerateFeed, getCurrentGenerationFingerprint, loadStylePrompt } from '../src/generator.js';
 
 const ai = (mes, swipe_id = 0, swipes) =>
     swipes ? { mes, is_user: false, is_system: false, is_hidden: false, swipe_id, swipes }
@@ -62,6 +62,189 @@ test('buildChatHistory: includeChatHistory=false returns empty', () => {
     state.settings.includeChatHistory = false;
     globalThis._stCtx.chat = [ai('x', 0)];
     assert.equal(_testBuildChatHistory(0, 0), '');
+});
+
+// ── Community memory: past comment threads in the prompt ──
+
+const threadOf = (...pairs) => pairs.map(([username, content]) => ({ username, content, replyTo: null, replyQuote: null, reactions: [] }));
+
+function seedThread(msgIdx, swipeIdx, messages, { swipeId } = {}) {
+    const msg = globalThis._stCtx.chat[msgIdx];
+    if (swipeId !== undefined) msg.swipe_id = swipeId;
+    _seedSaveCache({ [String(msgIdx)]: { [String(swipeIdx)]: { html: '<p>feed</p>', timestamp: 1, threads: messages } } });
+}
+
+test('buildPastCommentParts: disabled by default returns empty', () => {
+    globalThis._stCtx.chat = [ai('post0', 0), ai('post1', 0)];
+    seedThread(0, 0, threadOf(['nick', 'old comment']));
+    assert.deepEqual(_testBuildPastCommentParts('1'), []);
+});
+
+test('buildPastCommentParts: emits blocks between [Previously] and the anchor, oldest first', async () => {
+    setupGeneration();
+    state.settings = {
+        ...state.settings,
+        includeChatHistory: true,
+        includePastComments: true,
+        pastCommentsDepth: 3,
+    };
+    globalThis._stCtx.chat = [
+        ai('post0', 0),
+        ai('post1', 0),
+        ai('post2', 0),
+        ai('ANCHOR_POST', 0),
+    ];
+    seedThread(0, 0, threadOf(['oldest_fan', 'COMMENT_THREAD_0']));
+    seedThread(1, 0, threadOf(['regular', 'COMMENT_THREAD_1']));
+    seedThread(2, 0, threadOf(['regular', 'COMMENT_THREAD_2']));
+    seedThread(3, 0, threadOf(['someone', 'ANCHOR_FEED_NOT_INCLUDED']));
+
+    let userMessages = null;
+    await _testGenerateFeed('3', 0, true, async (_system, user) => { userMessages = user; return validResponse; });
+
+    const previouslyIdx = userMessages.findIndex(m => m.startsWith('[Previously'));
+    const anchorIdx = userMessages.findIndex(m => m.startsWith('[Current chapter'));
+    const threadIdxs = userMessages.reduce((acc, m, i) => (m.startsWith('[Reader comments') ? [...acc, i] : acc), []);
+    assert.equal(threadIdxs.length, 3, 'three past threads included');
+    assert.ok(threadIdxs.every(i => i > previouslyIdx && i < anchorIdx), 'threads sit between [Previously] and the anchor');
+    assert.match(userMessages[threadIdxs[0]], /COMMENT_THREAD_0/, 'oldest thread first');
+    assert.match(userMessages[threadIdxs[1]], /COMMENT_THREAD_1/);
+    assert.match(userMessages[threadIdxs[2]], /COMMENT_THREAD_2/);
+    // Anchor's own thread must never be quoted (regenerating post N must not quote post N).
+    for (const i of threadIdxs) assert.ok(!userMessages[i].includes('ANCHOR_FEED_NOT_INCLUDED'));
+    // The newest included thread is framed as "the previous chapter".
+    assert.match(userMessages[threadIdxs[2]], /\[Reader comments on the previous chapter/);
+    assert.match(userMessages[threadIdxs[0]], /\[Reader comments on an earlier chapter/);
+});
+
+test('buildPastCommentParts: only the ACTIVE swipe of a past post is quoted (side swipes excluded)', () => {
+    globalThis._stCtx.chat = [
+        { mes: 'active swipe text', is_user: false, is_system: false, is_hidden: false, swipe_id: 1, swipes: ['side swipe', 'active swipe text'] },
+        ai('anchor', 0),
+    ];
+    _seedSaveCache({
+        0: {
+            0: { html: '<p>side feed</p>', timestamp: 1, threads: threadOf(['sider', 'SIDE_SWIPE_COMMENT']) },
+            1: { html: '<p>active feed</p>', timestamp: 1, threads: threadOf(['active_fan', 'ACTIVE_SWIPE_COMMENT']) },
+        },
+    });
+    state.settings = { includePastComments: true, pastCommentsDepth: 2 };
+
+    const parts = _testBuildPastCommentParts('1');
+    assert.equal(parts.length, 1);
+    assert.match(parts[0], /ACTIVE_SWIPE_COMMENT/);
+    assert.ok(!parts[0].includes('SIDE_SWIPE_COMMENT'), 'the inactive swipe thread must not reach the prompt');
+});
+
+test('buildPastCommentParts: depth caps the count, missing threads do not spend the budget', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('p1', 0), ai('p2', 0), ai('p3', 0), ai('anchor', 0)];
+    seedThread(0, 0, threadOf(['a', 'THREAD_0']));
+    seedThread(2, 0, threadOf(['b', 'THREAD_2']));   // post 1 has no cached thread
+    state.settings = { includePastComments: true, pastCommentsDepth: 2 };
+
+    const parts = _testBuildPastCommentParts('4');
+    assert.equal(parts.length, 2, 'depth=2, and the gap post does not consume the budget');
+    assert.match(parts[0], /THREAD_0/);
+    assert.match(parts[1], /THREAD_2/);
+});
+
+test('buildPastCommentParts: noSaveMode disables the feature', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('anchor', 0)];
+    seedThread(0, 0, threadOf(['a', 'THREAD_0']));
+    state.settings = { includePastComments: true, pastCommentsDepth: 2, noSaveMode: true };
+    assert.deepEqual(_testBuildPastCommentParts('1'), []);
+});
+
+test('buildPastCommentParts: legacy entries without threads are skipped silently', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('anchor', 0)];
+    _seedSaveCache({ 0: { 0: { html: '<p>old feed</p>', timestamp: 1 } } });
+    state.settings = { includePastComments: true, pastCommentsDepth: 2 };
+    assert.deepEqual(_testBuildPastCommentParts('1'), []);
+});
+
+test('thread serialization: replies render as @nick (replying to @target, "quote") and multiline collapses', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('anchor', 0)];
+    seedThread(0, 0, [
+        { username: 'coder_42', content: 'multi\nline\ncontent', replyTo: null, replyQuote: null, reactions: [] },
+        { username: 'ghost_reader', content: 'SAME.', replyTo: 'coder_42', replyQuote: 'line content', reactions: [] },
+        { username: '', content: 'dropped, no username', replyTo: null, replyQuote: null, reactions: [] },
+    ]);
+    state.settings = { includePastComments: true, pastCommentsDepth: 2 };
+
+    const parts = _testBuildPastCommentParts('1');
+    assert.equal(parts.length, 1);
+    assert.match(parts[0], /@coder_42: multi \/ line \/ content/);
+    assert.match(parts[0], /@ghost_reader \(replying to @coder_42, "line content"\): SAME\./);
+    assert.ok(!parts[0].includes('dropped'));
+});
+
+test('thread serialization: per-thread char budget keeps the newest comments', () => {
+    globalThis._stCtx.chat = [ai('p0', 0), ai('anchor', 0)];
+    seedThread(0, 0, [
+        { username: 'early', content: 'EARLY_'.repeat(400), replyTo: null, replyQuote: null, reactions: [] },   // ~2400 chars — alone over budget
+        { username: 'mid', content: 'MID_'.repeat(400), replyTo: null, replyQuote: null, reactions: [] },       // ~2000 chars
+        { username: 'late', content: 'LATE_SMALL', replyTo: null, replyQuote: null, reactions: [] },
+    ]);
+    state.settings = { includePastComments: true, pastCommentsDepth: 2 };
+
+    const parts = _testBuildPastCommentParts('1');
+    assert.match(parts[0], /LATE_SMALL/, 'the newest comment always survives');
+    assert.ok(!parts[0].includes('EARLY_'), 'oldest oversized comments are trimmed first');
+});
+
+test('generateFeed stores the parsed thread with the feed entry (saveMode)', async () => {
+    setupGeneration();
+    await _testGenerateFeed('1', 0, true, async () => JSON.stringify([
+        { username: 'stored_nick', content: 'stored content', reactions: [] },
+    ]));
+    const entry = getFeedSlot('1', 0);
+    assert.equal(entry?.threads?.length, 1);
+    assert.equal(entry.threads[0].username, 'stored_nick');
+    assert.equal(entry.threads[0].content, 'stored content');
+});
+
+test('fingerprint changes when an included past thread changes (community memory is a prompt input)', async () => {
+    setupGeneration();
+    state.settings = {
+        ...state.settings,
+        includeChatHistory: false,
+        includePastComments: true,
+        pastCommentsDepth: 3,
+    };
+    globalThis._stCtx.chat = [ai('p0', 0), ai('anchor', 0)];
+    seedThread(0, 0, threadOf(['a', 'THREAD_V1']));
+
+    let fpV1 = '';
+    await _testGenerateFeed('1', 0, true, async () => validResponse);
+    fpV1 = getFeedSlot('1', 0)?.generationFp;
+    assert.match(fpV1, /^v1-/);
+
+    // Regenerate the PAST post's feed: the anchor's fp must change so its
+    // cached feed becomes soft-stale instead of pretending the context is same.
+    seedThread(0, 0, threadOf(['a', 'THREAD_V2']));
+    await _testGenerateFeed('1', 0, true, async () => validResponse);
+    const fpV2 = getFeedSlot('1', 0)?.generationFp;
+    assert.notEqual(fpV2, fpV1, 'changed past-thread content must change the anchor generation fp');
+
+    // Restore the original thread → fp returns to the original value.
+    seedThread(0, 0, threadOf(['a', 'THREAD_V1']));
+    await _testGenerateFeed('1', 0, true, async () => validResponse);
+    assert.equal(getFeedSlot('1', 0)?.generationFp, fpV1);
+});
+
+test('feature off: fp stays byte-identical to the pre-feature fp', async () => {
+    setupGeneration();
+    state.settings = { ...state.settings, includePastComments: false };
+
+    // Expected fp built exactly as the pre-feature code built it — same
+    // resolved lore config path (getChatLoreConfig) as the generator uses.
+    const expected = buildGenerationFingerprint(buildGenerationFingerprintInput({
+        settings: state.settings,
+        loreConfig: getChatLoreConfig(globalThis._stCtx),
+        stylePrompt: 'Generate {{count}} comments.',
+    }));
+    const actual = await getCurrentGenerationFingerprint(globalThis._stCtx, '1');
+    assert.equal(actual, expected, 'with the feature off the fp must not diverge from the historical formula');
 });
 
 test('current generation fingerprint uses generator inputs without loading lore entries', async () => {

@@ -526,6 +526,8 @@ test('buildGenerationFingerprint changes for every generation-relevant field', (
             contextDepth: 4,
             includePersona: true,
             includeCharacterDescription: true,
+            includePastComments: true,
+            pastCommentsDepth: 3,
             promptTemplate: 'main',
         },
         loreConfig: {
@@ -533,6 +535,7 @@ test('buildGenerationFingerprint changes for every generation-relevant field', (
             selectedEntries: [{ book: 'Book', uid: 1 }],
         },
         stylePrompt: 'style',
+        pastCommentsHash: 'thread-hash-1',
         profile: { id: 'profile-1', name: 'Primary', api: 'openai', model: 'model-a' },
     });
     const fingerprint = buildGenerationFingerprint(base);
@@ -545,6 +548,9 @@ test('buildGenerationFingerprint changes for every generation-relevant field', (
         { contextDepth: 5 },
         { includePersona: false },
         { includeCharacterDescription: false },
+        { includePastComments: false },
+        { pastCommentsDepth: 4 },
+        { pastCommentsHash: 'thread-hash-2' },
         { promptTemplate: 'alternate' },
         { stylePrompt: 'different style' },
         { userCount: 6 },
@@ -574,6 +580,9 @@ test('buildGenerationFingerprintInput applies deterministic defaults without und
         contextDepth: null,
         includePersona: false,
         includeCharacterDescription: false,
+        includePastComments: false,
+        pastCommentsDepth: null,
+        pastCommentsHash: '',
         promptTemplate: '',
         stylePrompt: '',
         userCount: 5,
