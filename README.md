@@ -16,7 +16,7 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 - Checkpoint/branch isolation: branches and checkpoints get their own feed; only shared-history entries are carried over.
 - Generation sources: a Connection Manager profile or a custom endpoint (URL + API key + optional model ID).
 - Configurable prompt: editable "vibe" templates (character and tone), role, jailbreak block (system / user / assistant-prefill positions), context depth, persona, character description, and world info (lorebooks) with a per-chat scope toggle for the automatic mode (all activation sources, or only the books attached to the chat: character / chat / persona).
-- Community memory (optional): parsed comment threads of preceding posts are injected into the prompt as `[Reader comments ...]` blocks, so regular commenters remember past chapters and keep running arguments. Depth 1–10, active swipe of each past post only, saveMode only; feeds whose context drifted are marked as outdated in the post indicator.
+- Community memory (optional): parsed comment threads of preceding posts are injected into the prompt as `[Reader comments ...]` blocks, so regular commenters remember past chapters and keep running arguments. Depth 1–10, active swipe of each past post only, saveMode only.
 - Notification sounds: built-in or user-uploaded, stored server-side so they follow your SillyTavern data directory.
 - Touch gestures for switching posts and swipes, quick settings menu, font family/size controls, theme sync.
 - Slash commands: `/dscomments toggle|regenerate|clear`.
@@ -54,7 +54,7 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 - The 💬 launcher button in the send form's Quick Reply bar toggles the comments window. With no feed yet, the empty window says so — click it to generate manually. A floating launcher button (settings → launcher mode) is available if you keep the Quick Reply bar hidden.
 - Enable **Auto-generate for the latest {{char}} message** (settings, or "Auto-update" in the window's quick menu) to regenerate commentary after each AI reply.
 - Every message and swipe keeps its own feed: switching messages or swiping restores the saved feed for that exact variant.
-- Optional **community memory**: with "Past comment threads" enabled (settings → *Display*, next to chat history and persona), commenters reference and continue discussions from preceding posts. Feeds stored before the toggle was enabled (or whose context drifted) keep rendering, but the post indicator marks them as outdated — regenerate to refresh.
+- Optional **community memory**: with "Past comment threads" enabled (settings → *Display*, next to chat history and persona), commenters reference and continue discussions from preceding posts. Feeds stored before the toggle was enabled keep rendering as-is (deliberate post edits are never flagged); regenerate a post manually to fold its new thread into later generations.
 - Gestures: swipe left/right to move between swipes, pull or scroll vertically to move between posts. Quick settings and font controls live in the feed's own menu.
 - Slash commands: `/dscomments toggle` (enable/disable), `/dscomments regenerate` (new commentary for the current message), `/dscomments clear` (drop saved commentary).
 - A detailed Russian guide is available in [USER_GUIDE.md](USER_GUIDE.md).

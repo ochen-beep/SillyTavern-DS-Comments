@@ -473,6 +473,12 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
                     updatePostIndicator();
                     recordEvent('log', `event=restore chat=${chatId} source=chat-restore status=no-target`);
                 }
+                // This branch used to return without scheduling the observer
+                // restart, so a saveMode chat switch left the observer bound to
+                // the PREVIOUS chat's message nodes — scroll-follow silently
+                // died until the panel was reopened. 600 ms covers the tail of
+                // printMessages/layout after the restore.
+                scheduleObserverRestart('chat', 600);
                 return;
             }
             observeAsyncCallback(onChatChanged?.(ctx2), 'onChatChanged');

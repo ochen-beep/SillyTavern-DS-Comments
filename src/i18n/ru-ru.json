@@ -132,7 +132,6 @@
     "dscomments.action.upload": "Загрузить",
     "dscomments.indicator.nosave": "Источник фида (фид не привязан к текущему посту)",
     "dscomments.indicator.pinned": "Закреплено",
-    "dscomments.indicator.stale": "Показан кэш — контекст изменился с момента генерации, перегенерируйте для обновления",
     "dscomments.font.system": "Системный",
     "dscomments.font.inter": "Inter",
     "dscomments.font.verdana": "Verdana",

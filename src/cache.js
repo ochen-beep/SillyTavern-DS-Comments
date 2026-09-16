@@ -20,11 +20,6 @@ import { showFeedHtml } from './ui/feed-controller.js';
 let _getGenerationFingerprint = null;
 let _restoreSequence = 0;
 let _showSequence = 0;
-// Outcome of the last completed restore for the CURRENT feed source:
-// 'soft-stale' = the cached feed is shown but its generationFp drifted from
-// the current prompt inputs. Surfaced on the indicator; cleared by any fresh
-// store or clean hit so the mark never outlives the state it describes.
-let _lastRestoreStale = false;
 
 /** Register the async generation-context fingerprint used by visible restores. */
 export function initCacheRestore({ getGenerationFingerprint } = {}) {
@@ -99,13 +94,7 @@ export async function selectCommentaryTarget(msgId, swipeIdx, options = {}) {
     const mid = String(msgId);
     const parsedSwipeIdx = Number(swipeIdx ?? 0);
     const sidx = Number.isInteger(parsedSwipeIdx) && parsedSwipeIdx >= 0 ? parsedSwipeIdx : 0;
-    const result = (status) => {
-        // Refresh the indicator AFTER the fingerprint verdict so the pill's
-        // stale mark reflects THIS restore, not the previous one. Superseded
-        // transitions leave the pill to the newer restore that replaced them.
-        if (status !== 'superseded') updatePostIndicator();
-        return { status, msgId: mid, swipeIdx: sidx };
-    };
+    const result = (status) => ({ status, msgId: mid, swipeIdx: sidx });
     const source = options.source || 'unknown';
     const isCurrent = () => {
         const currentCtx = getCtx();
@@ -164,7 +153,6 @@ export async function selectCommentaryTarget(msgId, swipeIdx, options = {}) {
 
         // No cached feed for this post → empty window with the "Generate" CTA.
         if (!entry?.html) {
-            _lastRestoreStale = false;
             pushRestoreLog('select', `#${mid}[${sidx}] MISSING->пусто (source=${source}) priorContent=${wipedReal} записи в кэше нет`);
             logRestoreOutcome({ msgId: mid, swipeIdx: sidx }, source, 'missing', `priorContent=${wipedReal}`);
             if (wipedReal) recordWipe(`MISSING #${mid}[${sidx}] source=${source} записи нет, но до этого показывались комментарии`);
@@ -179,7 +167,6 @@ export async function selectCommentaryTarget(msgId, swipeIdx, options = {}) {
         // == null (not ===) so legacy entries saved before generationFp existed
         // (field absent → undefined) are treated as a clean hit, not soft-stale.
         const status = (entry.generationFp == null || fpMatches) ? 'hit' : 'soft-stale';
-        _lastRestoreStale = status === 'soft-stale';
         if (status === 'hit') {
             pushRestoreLog('select', `#${mid}[${sidx}] HIT (source=${source}) fp=${fpShort(generationFp)}`);
             logRestoreOutcome({ msgId: mid, swipeIdx: sidx }, source, 'hit', `fpResolved=${fingerprintResolved}`);
@@ -194,7 +181,6 @@ export async function selectCommentaryTarget(msgId, swipeIdx, options = {}) {
         warn('selectCommentaryTarget error:', e);
         if (!isCurrent()) return result('superseded');
         setCurrentPost(mid, sidx);
-        _lastRestoreStale = false;
         showFeedHtml('');
         pushRestoreLog('select', `#${mid}[${sidx}] ERROR->missing (source=${source}) ${e?.message || e}`);
         recordEvent('error', `event=restore target=#${mid}[${sidx}] source=${source} status=error error=${e?.message || e}`);
@@ -440,17 +426,10 @@ export function updatePostIndicator() {
             // noSaveMode: feed source, not "pinned"
             pill.title = tr('Feed source (not tied to the current post)', 'dscomments.indicator.nosave');
             pill.classList.remove('dsc_pinned');
-            pill.classList.remove('dsc_stale');
         } else {
             const hasCached = !!getFeedSlot(source.msgId, source.swipeIdx)?.html;
-            const stale = hasCached && _lastRestoreStale;
+            pill.title = hasCached ? tr('Pinned', 'dscomments.indicator.pinned') : '';
             pill.classList.toggle('dsc_pinned', hasCached);
-            pill.classList.toggle('dsc_stale', stale);
-            pill.title = !hasCached
-                ? ''
-                : stale
-                    ? tr('Shown from cache — context has changed since generation, regenerate to refresh', 'dscomments.indicator.stale')
-                    : tr('Pinned', 'dscomments.indicator.pinned');
         }
     } catch {
         pill.textContent = `#${source.msgId}`;
@@ -496,7 +475,6 @@ export async function getCurrentFeed() {
  * @sideEffect updates the post indicator to reflect the new source.
  */
 export function storeFeed(html, msgId, swipeIdx, generationFp, messages = null) {
-    _lastRestoreStale = false;   // a fresh store is by definition context-fresh
     if (state.settings.noSaveMode) {
         const ctx = getCtx();
         const chatId = noSaveKey(ctx);
