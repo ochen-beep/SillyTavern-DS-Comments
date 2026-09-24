@@ -334,6 +334,21 @@ async function collectAttachedLore(ctx, { anchorMsgId, anchorSwipeIdx }) {
 }
 
 /**
+ * Max context handed to ST's dry-run WI scan. ST derives the scan's entry
+ * budget from this argument (world_info_budget % of it, capped by
+ * world_info_budget_cap when > 0). The feed request goes to a
+ * ConnectionManager profile or custom endpoint, so there is no real model
+ * context to budget against — and ctx.maxContext is the text-completion
+ * module variable, stale on chat-completion sessions, which silently
+ * truncated lore well below the user's intent ("budget reached" toast).
+ * A large constant keeps the percentage from biting; the absolute cap
+ * stays the only meaningful limiter. Manual mode and the vectorized path
+ * are not budgeted either, so automatic keyword/constant lore is now
+ * consistent with them.
+ */
+export const LORE_SCAN_MAX_CONTEXT = 100000;
+
+/**
  * Collect automatically activated lore through SillyTavern's prompt API
  * and cached WORLD_INFO_ACTIVATED event data.
  *
@@ -369,7 +384,7 @@ export async function collectAutomaticLore(ctx, { chatMessages, globalScanData, 
             // worldInfoString as usual.
             const result = await ctx.getWorldInfoPrompt(
                 chatMessages,
-                ctx.maxContext || 4096,
+                LORE_SCAN_MAX_CONTEXT,
                 true,
                 globalScanData,
             );

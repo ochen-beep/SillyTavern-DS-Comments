@@ -54,12 +54,32 @@ A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separa
 - The 💬 launcher button in the send form's Quick Reply bar toggles the comments window. With no feed yet, the empty window says so — click it to generate manually. A floating launcher button (settings → launcher mode) is available if you keep the Quick Reply bar hidden.
 - Enable **Auto-generate for the latest {{char}} message** (settings, or "Auto-update" in the window's quick menu) to regenerate commentary after each AI reply.
 - Every message and swipe keeps its own feed: switching messages or swiping restores the saved feed for that exact variant.
-- Optional **community memory**: with "Past comment threads" enabled (settings → *Display*, next to chat history and persona), commenters reference and continue discussions from preceding posts. Feeds stored before the toggle was enabled keep rendering as-is (deliberate post edits are never flagged); regenerate a post manually to fold its new thread into later generations.
+- Optional **community memory**: enable "Past comment threads" (settings → *Display*) so regular commenters remember previous chapters and keep running arguments. saveMode only; nuances — in the guide.
 - Gestures: swipe left/right to move between swipes, pull or scroll vertically to move between posts. Quick settings and font controls live in the feed's own menu.
 - Slash commands: `/dscomments toggle` (enable/disable), `/dscomments regenerate` (new commentary for the current message), `/dscomments clear` (drop saved commentary).
-- A detailed Russian guide is available in [USER_GUIDE.md](USER_GUIDE.md).
+- Storage: server-side per-chat files (reachable from any browser of the same ST account) or a device-local no-save mode — how exactly it works, see the technical details below.
 
-## Storage modes
+A detailed walkthrough — in Russian, with template editing, lorebooks, the jailbreak block and all the nuances — lives in [USER_GUIDE.md](USER_GUIDE.md).
+
+## Compatibility notes
+
+- Requires SillyTavern **1.18.0** or newer; developed and tested against this version.
+- Jailbreak role **Assistant** is a trailing-assistant prefill: OpenAI-compatible APIs generally continue it, while the newest Claude models reject trailing assistant messages with an API error.
+- With the lorebook scope set to "attached only", manually regenerating an older post/swipe can produce an empty lore block — there is no fresh activation data for that point in the chat.
+
+## See also
+
+This extension was inspired by [SillyTavern-EchoChamber](https://github.com/mattjaybe/SillyTavern-EchoChamber). If you want a different take on the idea — with more emphasis on chat design — give it a try.
+
+## License
+
+Released under the [GNU AGPL-3.0 License](LICENSE).
+
+---
+
+### Технические детали для тех кому интересно
+
+#### Storage modes
 
 - **Standard (saveMode)** — comments are stored in a server-side JSON file of the current chat via `/api/files/upload` and `/user/files/<name>`. Only a small chat GUID remains in `chatMetadata`; the feed never bloats chat history and is available from another browser of the same ST account.
 - **No-save (noSaveMode)** — one feed per chat lives on the device only (IndexedDB/localforage, key `DSComments_pinned`), is never written to chat metadata, survives a page reload, but is not exported with the chat.
@@ -70,15 +90,15 @@ saveMode files are named `dsc_<guid>.json` and are visible among the user's file
 
 Both modes sit behind a mode-agnostic adapter (`storeFeed`/`clearFeed`/`getCurrentFeedSource` in `src/cache.js`).
 
-## Checkpoints and branches
+#### Checkpoints and branches
 
 Checkpoints and branches in SillyTavern create a separate chat file, so DS Comments separates them from the parent on first open. Only slot entries with a matching `send_date` are carried over to the new `dsc_<guid>.json`; clearing or generating in the branch never touches the parent chat's cache. A checkpoint is isolated when opened, not at creation time.
 
-## Notification sounds
+#### Notification sounds
 
 Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds are stored on the server as user files `dsc_sound_custom_<n>.<ext>` (the same store as saveMode feeds: `data/<user>/user/files/`), so they are available from any browser and move together with the SillyTavern data directory. Only metadata (display name + file name) remains in `settings.json`. Earlier versions stored the blob in the browser's localforage — surviving blobs are migrated to the server automatically on the first launch after the update; sounds left only in the old browser (server file missing) are marked "⚠ file not found" in the list and play the default sound.
 
-## Diagnostics
+#### Diagnostics
 
 - The **Export logs (.json)** button in the settings returns diagnostics metadata: a runtime snapshot, the persistent event log, the restore log, and the debug log. Scene text, comment HTML, API keys, the full prompt, and raw responses never enter the dump.
 - The DS Comments entries in SillyTavern's **Debug Menu** (cache info, restore log, debug log, pinned feeds, custom-endpoint request) print their output to the browser console and show a toastr preview — the Debug Menu itself discards return values, so the console is the reliable place to copy from.
@@ -87,13 +107,7 @@ Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds a
 - In normal mode the browser console stays quiet (one init line, warnings/errors); the success path goes to the debug ring only.
 - When reporting an issue, attach the dump along with reproduction steps: the chat/swipe involved, the user action, whether a cache hit was expected, whether noSaveMode was on, and whether the error happened after a reload or a chat switch.
 
-## Compatibility notes
-
-- Requires SillyTavern **1.18.0** or newer; developed and tested against this version.
-- Jailbreak role **Assistant** is a trailing-assistant prefill: OpenAI-compatible APIs generally continue it, while the newest Claude models reject trailing assistant messages with an API error.
-- With the lorebook scope set to "attached only", manually regenerating an older post/swipe can produce an empty lore block — there is no fresh activation data for that point in the chat.
-
-## Development
+#### Development
 
 ```bash
 npm test   # node --test across test/*.test.mjs (NODE_TEST=1 enables test-only exports)
@@ -101,17 +115,17 @@ npm test   # node --test across test/*.test.mjs (NODE_TEST=1 enables test-only e
 
 The test runtime needs no jsdom: `test-helpers/stub-runtime.mjs` stubs the minimum DOM/SillyTavern surface required by the pure modules. API surfaces used by the extension are verified against a snapshot of SillyTavern sources that is generated on demand and not committed.
 
-## Packaging
+#### Packaging
 
 The user-facing package contains only: `manifest.json`, `index.js`, `style.css`, `settings.html`, `src/`, `chat-styles/`, `sounds/`, `USER_GUIDE.md`.
 
 **Exclude when exporting:** `.st-verify/`, `.zcode/`, `test/`, `test-helpers/`, `scripts/`, `package.json`, `README.md` (optional).
 
-## i18n
+#### i18n
 
 English-base + Russian-translation structure (the SillyTavern convention): all UI strings pass through `tr(fallback, key)` (`src/core.js`) with English fallbacks in the code; the Russian translation lives in `src/i18n/ru-ru.json` under the `dscomments.*` namespace and is registered in `manifest.json` for the `ru`/`ru-ru` locales. Any other UI language falls back to the English base automatically. `settings.html` uses `data-i18n` attributes (including `[title]`/`[placeholder]` directives) — they are applied via `renderExtensionTemplateAsync`. Diagnostic logs and the `/debug` menu entries are intentionally not localized.
 
-## Project structure
+#### Project structure
 
 - `index.js` — entry point: lifecycle hooks + orchestration.
 - `src/core.js` — state, settings, logging, i18n, sanitization, diagnostics.
@@ -122,11 +136,3 @@ English-base + Russian-translation structure (the SillyTavern convention): all U
 - `src/events.js` — scroll observer and SillyTavern event handlers.
 - `src/ui/` — window, chrome, quick-settings menu, settings, gestures, themes.
 - `chat-styles/main.md` — the editable "vibe" (the format contract lives in `src/prompt-contract.js` and is glued in code — templates must not duplicate it).
-
-## See also
-
-This extension was inspired by [SillyTavern-EchoChamber](https://github.com/mattjaybe/SillyTavern-EchoChamber). If you want a different take on the idea — with more emphasis on chat design — give it a try.
-
-## License
-
-Released under the [GNU AGPL-3.0 License](LICENSE).

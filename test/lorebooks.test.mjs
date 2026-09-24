@@ -9,6 +9,7 @@ import {
     LORE_META_KEY,
     LORE_MODE,
     LORE_SCOPE,
+    LORE_SCAN_MAX_CONTEXT,
     loreRefKey,
     normalizeLoreConfig,
     getChatLoreConfig,
@@ -282,6 +283,9 @@ test('collectAutomaticLore calls the ST API exactly once and returns only its st
     const globalScanData = { persona: 'scan data' };
     const calls = [];
     let loadCalls = 0;
+    // ctx.maxContext must be IGNORED: it is the text-completion module
+    // variable, stale on chat-completion sessions — the scan budget is
+    // derived from LORE_SCAN_MAX_CONTEXT instead (see lorebooks.js).
     const ctx = {
         maxContext: 8192,
         getWorldInfoPrompt: async (...args) => {
@@ -299,11 +303,11 @@ test('collectAutomaticLore calls the ST API exactly once and returns only its st
     // F2: isDryRun MUST be true — a non-dry-run scan re-emits
     // WORLD_INFO_ACTIVATED and writes timed-effects into chat_metadata
     // (see the contract comment in lorebooks.js).
-    assert.deepEqual(calls, [[chatMessages, 8192, true, globalScanData]]);
+    assert.deepEqual(calls, [[chatMessages, LORE_SCAN_MAX_CONTEXT, true, globalScanData]]);
     assert.equal(loadCalls, 0);
 });
 
-test('collectAutomaticLore uses the context fallback and safely handles unavailable or malformed APIs', async () => {
+test('collectAutomaticLore ignores a falsy maxContext and safely handles unavailable or malformed APIs', async () => {
     const args = [];
     const ctx = {
         maxContext: 0,
@@ -318,7 +322,7 @@ test('collectAutomaticLore uses the context fallback and safely handles unavaila
         chatMessages: undefined,
         globalScanData: null,
     }), { text: '', entries: [], missing: [] });
-    assert.deepEqual(args, [[undefined, 4096, true, null]]);
+    assert.deepEqual(args, [[undefined, LORE_SCAN_MAX_CONTEXT, true, null]]);
     assert.deepEqual(await collectAutomaticLore({}, {
         chatMessages: [],
         globalScanData: undefined,

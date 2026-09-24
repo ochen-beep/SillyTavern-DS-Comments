@@ -11,11 +11,11 @@ import { state, getCtx, warn, trace, tr, START_SCREEN_KEY, isCommentaryDisplayEl
 import { getFeedSlot, setFeedSlot, clearFeedFile, loadFeedStore } from './feed-file-store.js';
 import { schedulePinnedPersist, clearPinnedPersist } from './pinned-store.js';
 import { recordEvent } from './event-log.js';
+import { showFeedHtml } from './ui/feed-controller.js';
 
 function logRestoreOutcome(target, source, status, details = '') {
     recordEvent('log', `event=restore target=#${target.msgId}[${target.swipeIdx}] source=${source} status=${status}${details ? ` ${details}` : ''}`);
 }
-import { showFeedHtml } from './ui/feed-controller.js';
 
 let _getGenerationFingerprint = null;
 let _restoreSequence = 0;

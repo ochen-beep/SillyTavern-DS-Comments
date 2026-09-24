@@ -468,12 +468,11 @@ export function observePersistence(result, operationKey, userMessage) {
         });
 }
 
-// ── Diagnostic restore log (TEMPORARY probe - mobile feed-loss investigation) ──
+// ── Diagnostic restore log ──
 // Records the last restore/navigation decisions to an in-memory ring buffer so
 // they can be read from the ST Debug Menu (/debug -> "DS Comments: лог
-// восстановлений") WITHOUT browser DevTools (awkward on mobile). The probe only
-// records; it never alters restore behaviour. Remove once the root cause of
-// mobile commentary loss is confirmed.
+// восстановлений") WITHOUT browser DevTools (awkward on mobile). Records only;
+// it never alters restore behaviour.
 const _restoreLog = [];
 const _RESTORE_LOG_MAX = 200;
 let _lastFpDiag = '';

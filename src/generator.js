@@ -615,7 +615,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         .filter(Boolean);
     for (const el of launcherEls) el.classList.add('dsc_generating');
     setFeedText('');   // clear feed → empty-state renders blank (generating) instead of CTA
-        setStatus(tr('Generation in progress', 'dscomments.status.generating'), { isAction: true, actionLabel: tr('Cancel', 'dscomments.action.cancel') });
+    setStatus(tr('Generation in progress', 'dscomments.status.generating'), { isAction: true, actionLabel: tr('Cancel', 'dscomments.action.cancel') });
     syncRegenVisual();   // ⟳ → spinner (Lucide)
 
     try {

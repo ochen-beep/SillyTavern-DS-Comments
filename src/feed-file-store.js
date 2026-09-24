@@ -75,7 +75,6 @@ export function feedStoreDiagnostics() {
     return { ..._storageDiag };
 }
 
-
 // ── Fingerprint (same formula as the v1 cache — lifted entries keep values) ──
 
 export function hashFingerprint(text) {

@@ -246,8 +246,6 @@ export function syncPanelVisibility() {
     return isPanelVisible();
 }
 
-
-
 /**
  * Mount the panel (idempotent — safe to call repeatedly).
  * Returns the #dscWindow element.
