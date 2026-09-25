@@ -3,3 +3,7 @@ node_modules/
 Thumbs.db
 desktop.ini
 *.log
+
+# Internal dev docs, not part of the distributed extension
+PROJECT_MAP.md
+docs/
