@@ -4,7 +4,7 @@
 
 A [SillyTavern](https://docs.sillytavern.app/) extension that generates a separate Discord-style "spectator comments" feed for the current chat scene via its own LLM request. The chat text, swipes, and scroll position are never modified.
 
-**English** · [Русский](USER_GUIDE.md) ЗАЛЕТАЙ :)
+**English** · [Русский](USER_GUIDE.md)
 
 > This extension interacts with [SillyTavern](https://github.com/SillyTavern/SillyTavern) (AGPL-3.0) through its public extension API and contains no SillyTavern code.
 
@@ -101,7 +101,7 @@ Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds a
 #### Diagnostics
 
 - The **Export logs (.json)** button in the settings returns diagnostics metadata: a runtime snapshot, the persistent event log, the restore log, and the debug log. Scene text, comment HTML, API keys, the full prompt, and raw responses never enter the dump.
-- The DS Comments entries in SillyTavern's **Debug Menu** (cache info, restore log, debug log, pinned feeds, custom-endpoint request) print their output to the browser console and show a toastr preview — the Debug Menu itself discards return values, so the console is the reliable place to copy from.
+- The DS Comments entries in SillyTavern's **Debug Menu** (cache info, cache clear, restore log, debug log, pinned feeds, custom-endpoint request) print their output to the browser console and show a toastr preview — the Debug Menu itself discards return values, so the console is the reliable place to copy from.
 - The persistent event log lives in localforage, survives a page reload, and contains only metadata: ISO timestamps, session ID, chat-switch stages, restores, generations, API stages, parsing, file writes, and errors.
 - The full trace is included in the dump when Debug mode is enabled.
 - In normal mode the browser console stays quiet (one init line, warnings/errors); the success path goes to the debug ring only.
@@ -119,11 +119,11 @@ The test runtime needs no jsdom: `test-helpers/stub-runtime.mjs` stubs the minim
 
 The user-facing package contains only: `manifest.json`, `index.js`, `style.css`, `settings.html`, `src/`, `chat-styles/`, `sounds/`, `USER_GUIDE.md`.
 
-**Exclude when exporting:** `.st-verify/`, `.zcode/`, `test/`, `test-helpers/`, `scripts/`, `package.json`, `README.md` (optional).
+**Exclude when exporting:** `.git/`, `.github/`, `.zcode/`, `docs/`, `test/`, `test-helpers/`, `scripts/`, `PROJECT_MAP.md`, `package.json`, `.gitignore`, `LICENSE`, `README.md` (optional).
 
 #### i18n
 
-English-base + Russian-translation structure (the SillyTavern convention): all UI strings pass through `tr(fallback, key)` (`src/core.js`) with English fallbacks in the code; the Russian translation lives in `src/i18n/ru-ru.json` under the `dscomments.*` namespace and is registered in `manifest.json` for the `ru`/`ru-ru` locales. Any other UI language falls back to the English base automatically. `settings.html` uses `data-i18n` attributes (including `[title]`/`[placeholder]` directives) — they are applied via `renderExtensionTemplateAsync`. Diagnostic logs and the `/debug` menu entries are intentionally not localized.
+English-base + Russian-translation structure (the SillyTavern convention): all UI strings pass through `tr(fallback, key)` (`src/core.js`) with English fallbacks in the code; the Russian translation lives in `src/i18n/ru-ru.json` under the `dscomments.*` namespace and is registered in `manifest.json` for the Russian (`ru-ru`) locale. Any other UI language falls back to the English base automatically. `settings.html` uses `data-i18n` attributes (including `[title]`/`[placeholder]` directives) — they are applied via `renderExtensionTemplateAsync`. Diagnostic logs and the `/debug` menu entries are intentionally not localized.
 
 #### Project structure
 
