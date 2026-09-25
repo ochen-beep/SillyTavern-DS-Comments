@@ -23,7 +23,7 @@ import {
     notifyUser, observePersistence, persistSettingsNow, flushSettings, setApiKey, flushApiKey,
 } from '../src/core.js';
 
-// ── go
+// ── go ──
 const ai = (mes, swipe_id = 0) => ({ mes, is_user: false, is_system: false, is_hidden: false, swipe_id });
 const user = (mes) => ({ mes, is_user: true, is_system: false });
 const hiddenAi = (mes) => ({ mes, is_user: false, is_system: false, is_hidden: true, swipe_id: 0 });

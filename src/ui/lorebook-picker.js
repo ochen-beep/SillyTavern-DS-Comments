@@ -168,7 +168,7 @@ export function createLorebookPicker({ root, getCtx, onChange }) {
         const selectOptions = [placeholder];
         const added = new Set(config.manualBooks);
         if (!namesError) {
-            // Binding badges («— персонаж/чат») separate chat-attached books
+            // Binding badges ("— персонаж/чат") separate chat-attached books
             // from globally-enabled or standalone ones at selection time.
             const sources = resolveAttachedLorebookSources(getCtx());
             for (const name of bookNames) {

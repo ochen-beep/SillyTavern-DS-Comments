@@ -377,7 +377,7 @@ export async function collectAutomaticLore(ctx, { chatMessages, globalScanData, 
             // re-emits WORLD_INFO_ACTIVATED and writes sticky/cooldown
             // timed-effects into chat_metadata outside ST's generation cycle.
             // The event fires BEFORE the new message is pushed to chat, so
-            // binding to «the last post at event time» is wrong — see the
+            // binding to "the last post at event time" is wrong — see the
             // pending slot in events.js, which binds to the actually rendered
             // message. isDryRun and the binding must NOT be changed
             // independently — only together. Dry-run still returns
