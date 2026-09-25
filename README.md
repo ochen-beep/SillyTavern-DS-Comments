@@ -119,8 +119,6 @@ The test runtime needs no jsdom: `test-helpers/stub-runtime.mjs` stubs the minim
 
 The user-facing package contains only: `manifest.json`, `index.js`, `style.css`, `settings.html`, `src/`, `chat-styles/`, `sounds/`, `USER_GUIDE.md`.
 
-**Exclude when exporting:** `.git/`, `.github/`, `.zcode/`, `docs/`, `test/`, `test-helpers/`, `scripts/`, `PROJECT_MAP.md`, `package.json`, `.gitignore`, `LICENSE`, `README.md` (optional).
-
 #### i18n
 
 English-base + Russian-translation structure (the SillyTavern convention): all UI strings pass through `tr(fallback, key)` (`src/core.js`) with English fallbacks in the code; the Russian translation lives in `src/i18n/ru-ru.json` under the `dscomments.*` namespace and is registered in `manifest.json` for the Russian (`ru-ru`) locale. Any other UI language falls back to the English base automatically. `settings.html` uses `data-i18n` attributes (including `[title]`/`[placeholder]` directives) — they are applied via `renderExtensionTemplateAsync`. Diagnostic logs and the `/debug` menu entries are intentionally not localized.

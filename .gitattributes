@@ -1,0 +1,6 @@
+# Normalize line endings: LF everywhere (SillyTavern runs on Windows/Linux/macOS/Termux)
+* text=auto eol=lf
+
+# Audio assets are binary
+*.wav binary
+*.mp3 binary
