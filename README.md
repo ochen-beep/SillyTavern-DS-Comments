@@ -77,18 +77,14 @@ Released under the [GNU AGPL-3.0 License](LICENSE).
 
 ---
 
-### Технические детали для тех кому интересно
+### Technical details
 
 #### Storage modes
 
-- **Standard (saveMode)** — comments are stored in a server-side JSON file of the current chat via `/api/files/upload` and `/user/files/<name>`. Only a small chat GUID remains in `chatMetadata`; the feed never bloats chat history and is available from another browser of the same ST account.
-- **No-save (noSaveMode)** — one feed per chat lives on the device only (IndexedDB/localforage, key `DSComments_pinned`), is never written to chat metadata, survives a page reload, but is not exported with the chat.
-
-saveMode files are named `dsc_<guid>.json` and are visible among the user's files / Data Bank. A missing or unreadable file is treated as an empty cache; new entries are simply created again. Renaming a chat keeps the GUID bound to the old file. Simultaneous writes from multiple tabs use last-write-wins.
+- **Standard (saveMode)** — comments live in a server-side JSON file: they never bloat chat history and are reachable from any browser of the same ST account.
+- **No-save (noSaveMode)** — one feed per chat lives on the device only: it survives a page reload but is not exported with the chat.
 
 > **About "Clean extension data" (and deleting the extension):** it clears this browser's local stores (no-save feeds, the API key, the event log, leftovers of legacy browser-side templates), removes user prompt templates from the extension settings (the selection resets to the built-in "main"), removes uploaded custom sounds, and deletes the comments file of the **current** chat. Comment files of *other* chats (`dsc_<guid>.json`) stay in the user files — SillyTavern's API does not let an extension enumerate them. Delete those manually via the Data Bank / user files if needed (the exact file name for a chat is shown by the debug menu's DS Comments cache info entry).
-
-Both modes sit behind a mode-agnostic adapter (`storeFeed`/`clearFeed`/`getCurrentFeedSource` in `src/cache.js`).
 
 #### Checkpoints and branches
 
@@ -96,7 +92,7 @@ Checkpoints and branches in SillyTavern create a separate chat file, so DS Comme
 
 #### Notification sounds
 
-Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds are stored on the server as user files `dsc_sound_custom_<n>.<ext>` (the same store as saveMode feeds: `data/<user>/user/files/`), so they are available from any browser and move together with the SillyTavern data directory. Only metadata (display name + file name) remains in `settings.json`. Earlier versions stored the blob in the browser's localforage — surviving blobs are migrated to the server automatically on the first launch after the update; sounds left only in the old browser (server file missing) are marked "⚠ file not found" in the list and play the default sound.
+Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds are stored server-side as user files (the same store as saveMode feeds), so they are available from any browser and follow the SillyTavern data directory.
 
 #### Diagnostics
 
@@ -109,19 +105,11 @@ Built-in sounds live in the extension's `sounds/` folder. User-uploaded sounds a
 
 #### Development
 
-```bash
-npm test   # node --test across test/*.test.mjs (NODE_TEST=1 enables test-only exports)
-```
-
-The test runtime needs no jsdom: `test-helpers/stub-runtime.mjs` stubs the minimum DOM/SillyTavern surface required by the pure modules. API surfaces used by the extension are verified against a snapshot of SillyTavern sources that is generated on demand and not committed.
-
-#### Packaging
-
-The user-facing package contains only: `manifest.json`, `index.js`, `style.css`, `settings.html`, `src/`, `chat-styles/`, `sounds/`, `USER_GUIDE.md`.
+`npm test` runs the suite with Node's built-in test runner; no jsdom needed — `test-helpers/stub-runtime.mjs` stubs the DOM/SillyTavern surface.
 
 #### i18n
 
-English-base + Russian-translation structure (the SillyTavern convention): all UI strings pass through `tr(fallback, key)` (`src/core.js`) with English fallbacks in the code; the Russian translation lives in `src/i18n/ru-ru.json` under the `dscomments.*` namespace and is registered in `manifest.json` for the Russian (`ru-ru`) locale. Any other UI language falls back to the English base automatically. `settings.html` uses `data-i18n` attributes (including `[title]`/`[placeholder]` directives) — they are applied via `renderExtensionTemplateAsync`. Diagnostic logs and the `/debug` menu entries are intentionally not localized.
+The UI ships in English with an automatic Russian translation for the `ru`/`ru-ru` locale; any other locale falls back to English.
 
 #### Project structure
 
