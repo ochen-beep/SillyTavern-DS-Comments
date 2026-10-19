@@ -320,8 +320,28 @@
     height: auto;
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.04);
+    cursor: zoom-in;
 }
 .dsc_gif_sticker { background: transparent; }
+
+/* fullscreen media viewer: single reused <dialog> in the top layer (above all
+   extension and ST chrome). Any tap, pinch-in or Esc closes it. */
+dialog.dsc_lightbox {
+    margin: auto;
+    border: none;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.9);
+    touch-action: none;   /* the pinch is ours, not the browser page-zoom */
+}
+dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
+.dsc_lightbox_img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;   /* upscale small-caption memes to the viewport */
+}
 .dsc_reaction {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 2px 8px 2px 6px; border-radius: 8px; cursor: default;

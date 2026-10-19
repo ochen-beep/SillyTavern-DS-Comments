@@ -19,9 +19,25 @@
 
 import { state, sanitize } from '../core.js';
 import { upgradeMediaPlaceholders } from '../renderer.js';
+import { openMediaLightbox } from './lightbox.js';
 import { detectEmptyReason, renderEmptyStateHTML } from './empty.js';
 
 let _onGenerate = null;
+
+// One delegated media-click listener per feed element (feed elements are
+// re-created on window mount; WeakSet, not a flag on the element, so re-created
+// feeds re-bind cleanly).
+const _lightboxBound = new WeakSet();
+
+/** Tap a feed media image → fullscreen lightbox. */
+function bindMediaLightbox(feed) {
+    if (!feed?.addEventListener || _lightboxBound.has(feed)) return;
+    _lightboxBound.add(feed);
+    feed.addEventListener('click', (e) => {
+        const img = e.target?.closest?.('.dsc_gif_img');
+        if (img?.src) openMediaLightbox(img.src, img.alt);
+    });
+}
 
 /**
  * Register the generator for the "Generate" button in empty-state.
@@ -63,6 +79,7 @@ export function createFeedController({ getFeedElement, onGenerate, isFeedRendere
         // display path: fresh render, cache restore, pinned feeds. No-op on
         // stub elements without querySelectorAll.
         upgradeMediaPlaceholders(feed);
+        bindMediaLightbox(feed);
         feed.scrollTop = 0;
         // While the feed has no layout box the scrollTop write above is a spec
         // no-op, and Chromium restores the hide-time offset at reveal — a feed

@@ -32,11 +32,18 @@ function makeEl() {
         alt: '',
         src: '',
         remove() {},
+        // dialog/<el> semantics the lightbox test drives; last listener wins,
+        // which is all the single-handler wiring under test needs.
+        open: false,
+        addEventListener(type, fn) { (this._listeners ??= {})[type] = fn; },
+        showModal() { this.open = true; },
+        close() { this.open = false; },
     };
 }
 globalThis.document = {
     createElement: () => makeEl(),
     getElementById: () => null,
+    body: makeEl(),
 };
 
 // ── window shim ──
