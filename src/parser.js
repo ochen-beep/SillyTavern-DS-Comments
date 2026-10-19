@@ -220,11 +220,37 @@ function extractObjectsFromText(text) {
 }
 
 /**
+ * Clean a model-provided media search query ("gif"/"sticker" fields):
+ * collapse whitespace, cap the length. Returns '' for anything unusable.
+ */
+function cleanMediaQuery(raw) {
+    let s = String(raw ?? '').replace(/\s+/g, ' ').trim();
+    if (s.length > 120) s = s.slice(0, 120).trim();
+    return s;
+}
+
+/**
+ * Normalize a model-provided meme recipe {"template", "top", "bottom"}.
+ * Returns null unless the template hint is a non-empty string.
+ */
+function parseMemeRecipe(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const cap = (v) => {
+        let s = String(v ?? '').replace(/\s+/g, ' ').trim();
+        if (s.length > 100) s = s.slice(0, 100).trim();
+        return s;
+    };
+    const template = cap(raw.template);
+    if (!template) return null;
+    return { template, top: cap(raw.top), bottom: cap(raw.bottom) };
+}
+
+/**
  * Parse LLM output as JSON array of commentary messages.
  * Handles: markdown code blocks, extra text, invalid JSON, missing fields,
  * premature array closes, structural corruption.
  *
- * Expected schema: [{ username, content, reactions?, reply? }]
+ * Expected schema: [{ username, content, reactions?, reply?, gif?, sticker?, meme? }]
  *
  * Parse strategy (escalating):
  *   1. Direct JSON.parse — valid JSON
@@ -233,7 +259,7 @@ function extractObjectsFromText(text) {
  *   4. Truncated recovery — cut-off responses
  *
  * @param {string} rawText
- * @returns {Array<{username: string, content: string, replyTo: string|null, replyQuote: string|null, reactions: Array<{emoji: string, count: string}>}>|null}
+ * @returns {Array<{username: string, content: string, replyTo: string|null, replyQuote: string|null, reactions: Array<{emoji: string, count: string}>, gif: string, sticker: string, meme: object|null}>|null}
  */
 export function parseCommentary(rawText) {
     if (!rawText) return null;
@@ -356,7 +382,18 @@ export function parseCommentary(rawText) {
         if (!username) continue;
 
         const content = String(item.content || '').trim();
-        if (!content) continue;
+
+        // Media requests: at most one survives, in the priority order the
+        // contract teaches (gif > sticker > meme). A media-only comment (no
+        // text) is legitimate — the image IS the message.
+        const gif = cleanMediaQuery(item.gif);
+        const sticker = cleanMediaQuery(item.sticker);
+        let meme = parseMemeRecipe(item.meme);
+        if (gif) meme = null;   // one media field per message: gif > sticker > meme
+        const hasGif = !!gif;
+        const hasSticker = !hasGif && !!sticker;
+        const hasMeme = !hasGif && !hasSticker && !!meme;
+        if (!content && !hasGif && !hasSticker && !hasMeme) continue;
 
         let reactions = [];
         if (Array.isArray(item.reactions)) {
@@ -378,7 +415,12 @@ export function parseCommentary(rawText) {
             }
         }
 
-        messages.push({ username, content, replyTo, replyQuote, reactions });
+        messages.push({
+            username, content, replyTo, replyQuote, reactions,
+            gif: hasGif ? gif : '',
+            sticker: hasSticker ? sticker : '',
+            meme: hasMeme ? meme : null,
+        });
     }
 
     return messages.length > 0 ? messages : null;

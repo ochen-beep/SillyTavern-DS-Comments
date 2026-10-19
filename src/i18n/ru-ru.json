@@ -190,5 +190,19 @@
     "dscomments.toast.storefail": "Не удалось сохранить комментарии на сервер.",
     "dscomments.quick.autoupdate": "Авто-обновление",
     "dscomments.quick.nosave": "Без сохранения",
-    "dscomments.quick.sound": "Звук"
+    "dscomments.quick.sound": "Звук",
+    "dscomments.settings.media": "Гифки и мемы в комментариях",
+    "dscomments.settings.mediaOff": "Выключено",
+    "dscomments.settings.mediaGiphy": "Giphy",
+    "dscomments.settings.mediaHint": "Комментаторы смогут прикреплять гифки и стикеры из Giphy. Нужен бесплатный API-ключ (developers.giphy.com); он хранится локально в браузере. Модель не выдаёт URL — расширение само ищет и прикрепляет медиа.",
+    "dscomments.settings.mediaRating": "Фильтр контента",
+    "dscomments.settings.mediaRatingOff": "Выключен (без фильтра)",
+    "dscomments.settings.mediaRatingLow": "Низкий",
+    "dscomments.settings.mediaRatingMedium": "Средний",
+    "dscomments.settings.mediaRatingHigh": "Строгий",
+    "dscomments.settings.mediaStickers": "Стикеры (прозрачные)",
+    "dscomments.settings.mediaGiphyKey": "API-ключ Giphy",
+    "dscomments.settings.mediaMemes": "Мемы (memegen.link)",
+    "dscomments.settings.mediaMemesHint": "Комментаторы могут сами сочинять мемы на известных шаблонах. API-ключ не нужен.",
+    "dscomments.media.keySaveError": "Не удалось сохранить API-ключ Giphy."
 }

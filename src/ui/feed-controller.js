@@ -18,6 +18,7 @@
  */
 
 import { state, sanitize } from '../core.js';
+import { upgradeMediaPlaceholders } from '../renderer.js';
 import { detectEmptyReason, renderEmptyStateHTML } from './empty.js';
 
 let _onGenerate = null;
@@ -57,6 +58,11 @@ export function createFeedController({ getFeedElement, onGenerate, isFeedRendere
         if (!feed || (feed._dscLastHtml === safe && feed.innerHTML === safe)) return false;
         feed._dscLastHtml = safe;
         feed.innerHTML = safe;
+        // Media placeholders (data-dsc-media-src survive sanitize by design)
+        // become real <img> elements here — after sanitization, for every
+        // display path: fresh render, cache restore, pinned feeds. No-op on
+        // stub elements without querySelectorAll.
+        upgradeMediaPlaceholders(feed);
         feed.scrollTop = 0;
         // While the feed has no layout box the scrollTop write above is a spec
         // no-op, and Chromium restores the hide-time offset at reveal — a feed

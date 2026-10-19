@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PROMPT_CONTRACT } from '../src/prompt-contract.js';
+import { PROMPT_CONTRACT, buildContract } from '../src/prompt-contract.js';
 
 test('PROMPT_CONTRACT is a non-empty string', () => {
     assert.equal(typeof PROMPT_CONTRACT, 'string');
@@ -71,4 +71,33 @@ test('contract documents the past-comment community-memory blocks', () => {
     assert.match(PROMPT_CONTRACT, /\[Reader comments on an earlier chapter\]/);
     assert.match(PROMPT_CONTRACT, /remember what was said there/);
     assert.match(PROMPT_CONTRACT, /still belong only to the `\[Current chapter\]`/);
+});
+// ── buildContract (media sections) ──
+
+test('buildContract with all media off returns the plain contract byte-identically', () => {
+    assert.equal(buildContract({}), PROMPT_CONTRACT);
+    assert.equal(buildContract(), PROMPT_CONTRACT);
+});
+
+test('buildContract appends only the enabled media sections', () => {
+    const gifOnly = buildContract({ gif: true });
+    assert.ok(gifOnly.startsWith(PROMPT_CONTRACT));
+    assert.match(gifOnly, /GIF ATTACHMENTS/);
+    assert.ok(!gifOnly.includes('STICKER ATTACHMENTS'));
+    assert.ok(!gifOnly.includes('MEME ATTACHMENTS'));
+
+    const all = buildContract({ gif: true, sticker: true, meme: true });
+    assert.match(all, /GIF ATTACHMENTS/);
+    assert.match(all, /STICKER ATTACHMENTS/);
+    assert.match(all, /MEME ATTACHMENTS/);
+    // Media sections teach request fields, never URLs
+    assert.match(all, /NEVER put URLs/);
+});
+
+test('media sections reference the fields the parser reads', () => {
+    const all = buildContract({ gif: true, sticker: true, meme: true });
+    assert.match(all, /"gif"/);
+    assert.match(all, /"sticker"/);
+    assert.match(all, /"meme"/);
+    assert.match(all, /"template"/);
 });

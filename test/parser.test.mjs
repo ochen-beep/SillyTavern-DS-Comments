@@ -26,7 +26,7 @@ test('valid JSON array → normalized messages with all fields', () => {
     ]);
     const out = parseCommentary(raw);
     assert.equal(out.length, 2);
-    assert.deepEqual(out[0], { username: 'coder_42', content: 'hi', replyTo: null, replyQuote: null, reactions: [{ emoji: '😭', count: '12' }] });
+    assert.deepEqual(out[0], { username: 'coder_42', content: 'hi', replyTo: null, replyQuote: null, reactions: [{ emoji: '😭', count: '12' }], gif: '', sticker: '', meme: null });
     assert.equal(out[1].replyTo, 'coder_42');
     assert.equal(out[1].replyQuote, 'short fragment');
     assert.equal(out[1].reactions[0].emoji, '🙏');

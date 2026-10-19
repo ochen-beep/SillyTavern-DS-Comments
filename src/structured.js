@@ -93,6 +93,19 @@ export function buildCommentsSchema(variant = 'strict') {
         properties: { to: { type: 'string' }, quote: { type: 'string' } },
         required: ['to', 'quote'],
     };
+    const meme = {
+        type: 'object',
+        properties: {
+            template: { type: 'string' },
+            top: { type: 'string' },
+            bottom: { type: 'string' },
+        },
+        required: ['template', 'top', 'bottom'],
+    };
+    // Media request fields — always present in the schema (even when the
+    // media features are off) so toggling them doesn't change the schema
+    // shape; the contract sections decide whether the model fills them.
+    if (variant === 'strict') meme.additionalProperties = false;
 
     let item;
     if (variant === 'strict') {
@@ -105,8 +118,11 @@ export function buildCommentsSchema(variant = 'strict') {
                 content: { type: 'string' },
                 reply: { anyOf: [reply, { type: 'null' }] },
                 reactions: { anyOf: [{ type: 'array', items: reaction }, { type: 'null' }] },
+                gif: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                sticker: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                meme: { anyOf: [meme, { type: 'null' }] },
             },
-            required: ['username', 'content', 'reply', 'reactions'],
+            required: ['username', 'content', 'reply', 'reactions', 'gif', 'sticker', 'meme'],
             additionalProperties: false,
         };
     } else {
@@ -117,6 +133,9 @@ export function buildCommentsSchema(variant = 'strict') {
                 content: { type: 'string' },
                 reply,
                 reactions: { type: 'array', items: reaction },
+                gif: { type: 'string' },
+                sticker: { type: 'string' },
+                meme,
             },
             required: ['username', 'content'],
         };

@@ -297,6 +297,31 @@
 
 /* reactions */
 .dsc_reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+/* comment media (GIF/sticker/meme) */
+/* The placeholder div survives sanitize with the URL in data-* attributes;
+   feed-controller upgrades it to an <img> right after insertion. The wrapper
+   hugs the image (fit-content) so the skeleton background never paints a
+   wider band than the media itself; max-width caps it to the column. */
+.dsc_gif {
+    margin-top: 6px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    width: fit-content;
+    max-width: 100%;
+    line-height: 0;   /* no baseline gap under the inline img */
+}
+.dsc_gif_img {
+    display: block;
+    max-width: 100%;
+    max-height: 260px;
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+.dsc_gif_sticker { background: transparent; }
 .dsc_reaction {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 2px 8px 2px 6px; border-radius: 8px; cursor: default;
@@ -669,3 +694,5 @@
    above this window (2999) and its menus (3500). A previous override here
    forced them down to 4000, below ST's own 4001-4100 layers (character popup,
    chat-select, drawer combos). */
+/* unresolved media request in a media-only comment — bracketed degradation */
+.dsc_media_fallback { opacity: 0.55; font-style: italic; }

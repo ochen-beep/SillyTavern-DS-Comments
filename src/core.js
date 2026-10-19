@@ -20,6 +20,10 @@ export const META_KEY = 'dscomments_commentary';
 // localforage key prefixes (prompt templates, api key, sound blobs).
 export const LF_PROMPTS = 'DSComments_prompts';
 export const LF_API_KEY = 'DSComments_apiKey';
+// localforage key for the comment-media provider API key (Giphy) — the
+// same out-of-settings treatment as LF_API_KEY: secrets never enter the
+// server-synced settings JSON.
+export const LF_GIPHY_KEY = 'DSComments_giphyKey';
 export const LF_SOUND = 'DSComments_sound_';
 // localforage key for the noSave pinned-feeds store (one record, Object chatId->feed).
 export const LF_PINNED = 'DSComments_pinned';
@@ -82,6 +86,17 @@ export const defaultSettings = Object.freeze({
     // 'always' (also unknown custom endpoints). Never sent to sources whose
     // server mapping prompt-hacks the schema (claude/deepseek/zai/...).
     structuredOutput: 'off',
+
+    // comment media attachments (AI commenters react with GIFs/stickers/memes).
+    // mediaProvider: GIF/sticker search backend — 'off' (default: prompt and
+    // fingerprint stay byte-identical) or 'giphy'. mediaRating is the
+    // coarse content filter ('off' = unfiltered). mediaStickers adds the
+    // transparent-sticker search; mediaMemes lets commenters
+    // compose their own memes via memegen.link (keyless).
+    mediaProvider: 'off',
+    mediaRating: 'medium',
+    mediaStickers: true,
+    mediaMemes: false,
 
     // prompt template: builtins in chat-styles/*.md ('main', 'test' — vibe) + user copies.
     // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
@@ -431,6 +446,14 @@ export async function loadSettings() {
     if (!['off', 'auto', 'always'].includes(state.settings.structuredOutput)) {
         state.settings.structuredOutput = defaultSettings.structuredOutput;
     }
+    if (!['off', 'giphy'].includes(state.settings.mediaProvider)) {
+        state.settings.mediaProvider = defaultSettings.mediaProvider;
+    }
+    if (!['off', 'low', 'medium', 'high'].includes(state.settings.mediaRating)) {
+        state.settings.mediaRating = defaultSettings.mediaRating;
+    }
+    state.settings.mediaStickers = state.settings.mediaStickers !== false;
+    state.settings.mediaMemes = state.settings.mediaMemes === true;
     if (!state.settings.soundFiles) state.settings.soundFiles = {};
     if (!state.settings.soundId) state.settings.soundId = 'default';
 
@@ -735,6 +758,38 @@ export function setApiKey(key) {
  *  Returns the flush result so callers/tests can await completion. */
 export function flushApiKey() {
     return _persistApiKey.flush?.();
+}
+
+// ── Media provider key storage (Giphy; same contract as LF_API_KEY) ──
+
+let _giphyKeyCache = null;
+
+export async function getGiphyKey() {
+    if (_giphyKeyCache !== null) return _giphyKeyCache;
+    try {
+        _giphyKeyCache = (await SillyTavern.libs.localforage.getItem(LF_GIPHY_KEY)) || '';
+        return _giphyKeyCache;
+    } catch { return ''; }
+}
+
+const _persistGiphyKey = debounce(async () => {
+    try {
+        if (_giphyKeyCache) await SillyTavern.libs.localforage.setItem(LF_GIPHY_KEY, _giphyKeyCache);
+        else await SillyTavern.libs.localforage.removeItem(LF_GIPHY_KEY);
+    } catch (cause) {
+        error('Giphy key persistence failed:', cause);
+        notifyUser('error', tr('Could not save the Giphy API key.', 'dscomments.media.keySaveError'), 'giphy-key-save');
+    }
+}, 400);
+
+export function setGiphyKey(key) {
+    _giphyKeyCache = key || '';
+    _persistGiphyKey();
+}
+
+/** Flush the pending giphy-key write (blur / visibilitychange). */
+export function flushGiphyKey() {
+    return _persistGiphyKey.flush?.();
 }
 
 // ── Confirmation Modal (via ST context; native confirm as last-resort fallback) ──

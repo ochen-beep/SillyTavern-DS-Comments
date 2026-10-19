@@ -67,7 +67,7 @@ test('buildCommentsSchema: strict variant is OpenAI-strict-shaped', () => {
     assert.equal(value.additionalProperties, false);
     assert.deepEqual(value.required, ['comments']);
     const item = value.properties.comments.items;
-    assert.deepEqual(item.required, ['username', 'content', 'reply', 'reactions'], 'strict mode: all props required');
+    assert.deepEqual(item.required, ['username', 'content', 'reply', 'reactions', 'gif', 'sticker', 'meme'], 'strict mode: all props required');
     assert.equal(item.additionalProperties, false);
     // CM payload key and OpenAI wire key carry the same schema
     assert.deepEqual(response_format.json_schema.schema, value);
@@ -110,4 +110,28 @@ test('parseCommentary: bare array still parses (envelope support is additive)', 
     const out = parseCommentary(JSON.stringify([{ username: 'n', content: 'c' }]));
     assert.equal(out.length, 1);
     assert.equal(out[0].username, 'n');
+});
+
+// ── media fields in the schema ──
+
+test('strict schema includes gif/sticker/meme with null optionals and additionalProperties:false', () => {
+    const { json_schema } = buildCommentsSchema('strict');
+    const item = json_schema.value.properties.comments.items;
+    assert.deepEqual(item.properties.gif, { anyOf: [{ type: 'string' }, { type: 'null' }] });
+    assert.deepEqual(item.properties.sticker, { anyOf: [{ type: 'string' }, { type: 'null' }] });
+    assert.equal(item.properties.meme.anyOf[0].type, 'object');
+    assert.deepEqual(item.properties.meme.anyOf[0].required, ['template', 'top', 'bottom']);
+    assert.deepEqual(item.properties.meme.anyOf[0].properties.template, { type: 'string' });
+    assert.equal(item.properties.meme.anyOf[0].additionalProperties, false);
+    for (const k of ['gif', 'sticker', 'meme']) assert.ok(item.required.includes(k));
+    assert.deepEqual(item.required, ['username', 'content', 'reply', 'reactions', 'gif', 'sticker', 'meme']);
+});
+
+test('loose schema includes gif/sticker/meme as non-required optionals', () => {
+    const { json_schema } = buildCommentsSchema('loose');
+    const item = json_schema.value.properties.comments.items;
+    assert.deepEqual(item.properties.gif, { type: 'string' });
+    assert.deepEqual(item.properties.sticker, { type: 'string' });
+    assert.equal(item.properties.meme.type, 'object');
+    assert.deepEqual(item.required, ['username', 'content']);
 });

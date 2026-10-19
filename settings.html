@@ -159,6 +159,31 @@
                     </select>
                     <small class="dsc_hint" data-i18n="dscomments.settings.imagesHint">Images of the commented post are attached to the prompt — commenters react to what is shown. Auto attaches only when the model looks vision-capable. Images are sent to the selected comments source, which may differ from your main chat API.</small>
                 </div>
+                <!-- Comment media: GIFs/stickers via Giphy, memes via memegen.link.
+                     The model outputs a search query / meme recipe; the extension resolves
+                     allow-listed CDN URLs. -->
+                <div class="dsc_field_group">
+                    <span class="dsc_field_label"><i class="fa-solid fa-film fa-fw"></i> <span data-i18n="dscomments.settings.media">Comment GIFs and memes</span></span>
+                    <select id="dsc_media_provider" class="dsc_select">
+                        <option value="off" data-i18n="dscomments.settings.mediaOff">Off</option>
+                        <option value="giphy" data-i18n="dscomments.settings.mediaGiphy">Giphy</option>
+                    </select>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.mediaHint">Commenters can attach reaction GIFs and stickers from Giphy. You need a free API key (developers.giphy.com). The model never outputs URLs — the extension searches and attaches them itself.</small>
+                    <div id="dsc_media_provider_body" hidden>
+                        <span class="dsc_field_label" data-i18n="dscomments.settings.mediaRating">Content rating</span>
+                        <select id="dsc_media_rating" class="dsc_select">
+                            <option value="off" data-i18n="dscomments.settings.mediaRatingOff">Off (unfiltered)</option>
+                            <option value="low" data-i18n="dscomments.settings.mediaRatingLow">Low</option>
+                            <option value="medium" data-i18n="dscomments.settings.mediaRatingMedium">Medium</option>
+                            <option value="high" data-i18n="dscomments.settings.mediaRatingHigh">High</option>
+                        </select>
+                        <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_stickers" class="checkbox"> <span data-i18n="dscomments.settings.mediaStickers">Stickers (transparent)</span></label>
+                        <span class="dsc_field_label" id="dsc_media_giphy_key_label" data-i18n="dscomments.settings.mediaGiphyKey">Giphy API key</span>
+                        <input type="password" id="dsc_media_giphy_key" class="dsc_input" placeholder="dc6za..." autocomplete="off">
+                    </div>
+                </div>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_memes" class="checkbox"> <span><span data-i18n="dscomments.settings.mediaMemes">Memes (memegen.link)</span>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.mediaMemesHint">Commenters can compose their own memes on well-known templates. No API key needed.</small></span></label>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_lore_enable" class="checkbox"> <span data-i18n="dscomments.settings.lore">World information</span></label>
                 <div id="dsc_lore_group" hidden>
                     <div class="dsc_seg" id="dsc_lore_mode">

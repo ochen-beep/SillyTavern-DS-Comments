@@ -40,3 +40,48 @@ Example (note: reply's "content" is a real message, and its "quote" is copied fr
 **Context:** The commenters have just finished reading the \`[Current chapter]\`. This is the fresh, highly anticipated update. \`[Previously]\` is established canon — readers remember it, make callbacks, and connect dots, but their raw, immediate emotional reactions are entirely focused on the current chapter's events.
 
 **Context:** \`[Reader comments on the previous chapter]\` and \`[Reader comments on an earlier chapter]\` blocks are this same community's past discussions — the commenters remember what was said there. Returning commenters keep their takes and their nicknames, may reply to their own or each other's earlier messages, and continue running arguments and inside jokes from those threads. Raw, immediate emotional reactions still belong only to the \`[Current chapter]\`.`;
+
+/**
+ * Optional media sections, appended to the contract only for the features
+ * that are currently enabled. Each section teaches the model a request FIELD
+ * (a search query or a meme recipe) — never a URL: the extension resolves
+ * requests against the media APIs itself.
+ */
+const GIF_SECTION = `
+## GIF ATTACHMENTS (optional)
+
+- "gif": optional string — a SHORT English search phrase (2-5 words) describing a reaction GIF, e.g. "cat shocked", "mic drop", "crying laughing"
+- Use a GIF only when it genuinely amplifies the emotion of the message — at most 1-2 GIFs per generation, most messages have none
+- NEVER put URLs or links in "gif" or "content" — only the search phrase
+- The GIF complements "content"; "content" stays required (a short caption is fine)`;
+
+const STICKER_SECTION = `
+## STICKER ATTACHMENTS (optional)
+
+- "sticker": optional string — a SHORT English search phrase (2-5 words) for a transparent sticker, e.g. "thumbs up cat", "anime crying"
+- Same discipline as GIFs: sparingly, at most 1-2 per generation, no URLs
+- A message may carry "sticker" OR "gif", never both`;
+
+const MEME_SECTION = `
+## MEME ATTACHMENTS (optional)
+
+- "meme": optional object {"template": "...", "top": "...", "bottom": "..."} — the meme YOU compose: pick a well-known template by name (e.g. "drake", "two buttons", "distracted boyfriend") and write the caption lines yourself
+- Pick the template by the SHAPE of the joke (two contrasting options → drake / two buttons; escalation → expanding brain), not just popularity — and fill the captions with a SPECIFIC detail from the current scene, never generic filler. If nothing fits, skip the meme
+- "top" is the text above the image, "bottom" below; either may be "" for one-panel templates
+- Write captions in the commenters' language; keep each line short (max ~60 chars)
+- Same discipline: sparingly, at most 1-2 memes per generation, no URLs
+- A message carries at most ONE media field ("gif", "sticker" or "meme")`;
+
+/**
+ * Build the full contract for a generation. With every media feature off the
+ * output is byte-identical to the plain PROMPT_CONTRACT.
+ * @param {{ gif?: boolean, sticker?: boolean, meme?: boolean }} media
+ * @returns {string}
+ */
+export function buildContract({ gif = false, sticker = false, meme = false } = {}) {
+    const sections = [PROMPT_CONTRACT];
+    if (gif) sections.push(GIF_SECTION);
+    if (sticker) sections.push(STICKER_SECTION);
+    if (meme) sections.push(MEME_SECTION);
+    return sections.join('\n');
+}

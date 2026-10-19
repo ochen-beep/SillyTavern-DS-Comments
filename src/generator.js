@@ -8,9 +8,10 @@
  * source block as its own user message (see assemblePrompt).
  */
 
-import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastAIPost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag } from './core.js';
+import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastAIPost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag, getGiphyKey } from './core.js';
 import { planPostImages, loadImageParts } from './images.js';
-import { PROMPT_CONTRACT } from './prompt-contract.js';
+import { PROMPT_CONTRACT, buildContract } from './prompt-contract.js';
+import { resolveCommentMedia } from './media.js';
 import { renderMessages } from './renderer.js';
 import { recordEvent } from './event-log.js';
 import { parseCommentary } from './parser.js';
@@ -322,18 +323,52 @@ function assemblePrompt(parts) {
     return { systemPrompt, userMessages, assistantPrefill };
 }
 
+/**
+ * Media feature flags for this generation, derived from settings. GIFs ride
+ * the provider selection; memes need no provider. GIF/sticker sections enter
+ * the contract only when a usable provider is configured.
+ */
+function mediaFeatures(settings) {
+    const provider = settings.mediaProvider === 'giphy' ? 'giphy' : '';
+    return {
+        provider,
+        gif: !!provider,
+        sticker: !!provider && settings.mediaStickers !== false,
+        meme: settings.mediaMemes === true,
+    };
+}
+
+/**
+ * Identity of the media settings shape, feeding the conditional mediaHash fp
+ * field. Empty when every media feature is off, so legacy fingerprints stay
+ * byte-identical (same discipline as imagesHash). Rating participates: it
+ * reaches both provider requests and, transitively, what gets attached.
+ */
+function computeMediaHash(settings) {
+    const media = mediaFeatures(settings);
+    if (!media.gif && !media.sticker && !media.meme) return '';
+    const rating = ['off', 'low', 'medium', 'high'].includes(settings.mediaRating)
+        ? settings.mediaRating
+        : 'medium';
+    return hashFingerprint(`media:${media.provider}|${media.sticker}|${media.meme}|${rating}`);
+}
+
 function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwipeIdx }) {
     const settings = state.settings;
     const context = buildContextParts(ctx, lore);
     const history = buildChatHistoryParts(anchorMsgId, anchorSwipeIdx, ctx);
     const pastComments = buildPastCommentParts(anchorMsgId);
+    const media = mediaFeatures(settings);
+    const contract = (media.gif || media.sticker || media.meme)
+        ? buildContract(media)
+        : PROMPT_CONTRACT;
     const parts = {
         ...context,
         ...history,
         pastComments,
         systemPrompt: buildPrompt(stylePrompt, {
             count: parseInt(settings.userCount) || 5,
-            contract: PROMPT_CONTRACT,
+            contract,
         }),
         jailbreak: settings.enableJailbreakBlock
             ? resolveSTMacro(String(settings.jailbreakText || '').trim())
@@ -484,6 +519,7 @@ export async function getCurrentGenerationFingerprint(ctx = getCtx(), anchorMsgI
         api: input.profileApi,
         model: input.profileModel,
     }).hash;
+    input.mediaHash = computeMediaHash(settings);
     const fp = buildGenerationFingerprint(input);
     const diag = getLastFpDiag();
     _fpCacheKey = cacheKey;
@@ -508,6 +544,9 @@ function _fpSettingsKey(s) {
         s.commentUserPosts,
         // Image attach mode changes the imagesHash side of the fp.
         s.includeImages,
+        // Media features change the contract text (prompt) and may append
+        // media to messages — both are generation inputs.
+        s.mediaProvider, s.mediaStickers, s.mediaMemes,
         s.promptTemplate, s.enableJailbreakBlock,
         s.jailbreakRole, s.jailbreakText,
     ].join('|');
@@ -686,6 +725,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             model: generationInput.profileModel,
         });
         generationInput.imagesHash = imagePlan.hash;
+        generationInput.mediaHash = computeMediaHash(settings);
         markPhase('fingerprint', fingerprintStartedAt);
         if (!isEpochCurrent(epoch)) {
             trace('generateFeed: discarding stale result (epoch changed during fingerprint input resolution)');
@@ -843,6 +883,38 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             throw new Error(tr('Could not parse the commentary.', 'dscomments.error.parse'));
         }
         recordEvent('log', `event=generation_parse target=#${resolvedMsgId}[${resolvedSwipeIdx}] result=success messages=${messages.length} responseChars=${rawText.length}`);
+
+        // Resolve model media requests (gif/sticker queries, meme recipes) to
+        // allow-listed URLs. Runs AFTER the parse, BEFORE the render/store —
+        // storeFeed persists the mutated message array. Abort propagates (the
+        // catch below shows 'cancelled'); any other failure leaves the feed
+        // text-only, which is why the epoch check below still applies.
+        const mediaStartedAt = performance.now();
+        try {
+            const media = mediaFeatures(settings);
+            if (media.gif || media.sticker || media.meme) {
+                const attached = await resolveCommentMedia(messages, {
+                    provider: media.provider,
+                    giphyKey: await getGiphyKey(),
+                    rating: settings.mediaRating,
+                    stickersEnabled: media.sticker,
+                    memeEnabled: media.meme,
+                    signal,
+                });
+                if (attached) {
+                    recordEvent('log', `event=generation_media target=#${resolvedMsgId}[${resolvedSwipeIdx}] attached=${attached}`);
+                }
+            }
+        } catch (e) {
+            if (e?.name === 'AbortError') throw e;
+            warn('resolveCommentMedia failed — feed stays text-only:', e);
+        }
+        markPhase('media', mediaStartedAt);
+        if (!isEpochCurrent(epoch)) {
+            trace('generateFeed: discarding stale result (epoch changed during media resolution)');
+            recordStale('media');
+            return;
+        }
 
         const html = renderMessages(messages);
 

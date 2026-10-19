@@ -5,7 +5,7 @@
  * application and prompt-template management (localforage, edit-on-place).
  */
 
-import { state, getCtx, BASE_URL, saveSettings, escapeHtml, getApiKey, setApiKey, DSC_FONTS, LF_PROMPTS, log, warn, NUMERIC_SETTINGS, normalizeFiniteNumber, tr } from '../core.js';
+import { state, getCtx, BASE_URL, saveSettings, escapeHtml, getApiKey, setApiKey, getGiphyKey, DSC_FONTS, LF_PROMPTS, log, warn, NUMERIC_SETTINGS, normalizeFiniteNumber, tr } from '../core.js';
 import { getProfiles, getProfileDetails } from '../connection.js';
 
 // ── Settings field map: settings.html id → state prop + input type ──
@@ -28,6 +28,10 @@ const FIELD_MAP = {
     dsc_pastcom:        { prop: 'includePastComments',         type: 'checkbox' },
     dsc_pastcom_depth:  { prop: 'pastCommentsDepth',           type: 'number' },
     dsc_images:         { prop: 'includeImages',               type: 'select' },
+    dsc_media_provider: { prop: 'mediaProvider',               type: 'select' },
+    dsc_media_rating:   { prop: 'mediaRating',                 type: 'select' },
+    dsc_media_stickers: { prop: 'mediaStickers',               type: 'checkbox' },
+    dsc_media_memes:    { prop: 'mediaMemes',                  type: 'checkbox' },
     dsc_structured:     { prop: 'structuredOutput',            type: 'select' },
     dsc_fontfam:        { prop: 'fontFamily',                  type: 'select' },
     dsc_fontsize:       { prop: 'fontSize',                    type: 'number' },
@@ -117,6 +121,8 @@ export function syncDomFromState() {
     syncSegmentedSource();
     // API key from localforage
     syncApiKeyField();
+    // Media provider keys from localforage
+    syncMediaKeyFields();
     // Volume label
     const volLbl = document.getElementById('dsc_sound_volume_val');
     if (volLbl) volLbl.textContent = `${state.settings.soundVolume ?? 30}%`;
@@ -128,6 +134,7 @@ export function syncPanelVisibility() {
     updateDepthVisibility();
     updatePastCommentsVisibility();
     updateUserPostsVisibility();
+    updateMediaVisibility();
     updateJailbreakVisibility();
     // Sound body: on load unhide it when sound is enabled, otherwise the slider/
     // list/test button stay invisible even though the checkbox is checked.
@@ -212,6 +219,26 @@ function updateDepthVisibility() {
 function updatePastCommentsVisibility() {
     const el = document.getElementById('dsc_pastcom_group');
     if (el) el.hidden = !state.settings.includePastComments;
+}
+
+/** Provider-dependent media controls: body and the per-provider key field. */
+export function updateMediaVisibility() {
+    const provider = state.settings.mediaProvider === 'giphy' ? 'giphy' : '';
+    const body = document.getElementById('dsc_media_provider_body');
+    if (body) body.hidden = !provider;
+    const stickers = document.getElementById('dsc_media_stickers');
+    if (stickers) stickers.disabled = !provider;
+    const giphyLabel = document.getElementById('dsc_media_giphy_key_label');
+    const giphyKey = document.getElementById('dsc_media_giphy_key');
+    if (giphyLabel) giphyLabel.hidden = provider !== 'giphy';
+    if (giphyKey) giphyKey.hidden = provider !== 'giphy';
+}
+
+async function syncMediaKeyFields() {
+    try {
+        const giphy = document.getElementById('dsc_media_giphy_key');
+        if (giphy) giphy.value = await getGiphyKey() || '';
+    } catch { /* skip */ }
 }
 
 function updateUserPostsVisibility() {
