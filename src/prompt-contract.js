@@ -50,7 +50,7 @@ Example (note: reply's "content" is a real message, and its "quote" is copied fr
 const GIF_SECTION = `
 ## GIF ATTACHMENTS (optional)
 
-- "gif": optional string — a SHORT English search phrase (2-5 words) describing a reaction GIF, e.g. "cat shocked", "mic drop", "crying laughing"
+- "gif": optional string — a SHORT English search phrase (2-5 words) describing a reaction GIF. Derive it from THIS scene — its situation, an object, the beat's exact emotion — and vary the searches across the feed; do not reuse a stock phrase when the scene suggests something funnier
 - Use a GIF only when it genuinely amplifies the emotion of the message — at most 1-2 GIFs per generation, most messages have none
 - NEVER put URLs or links in "gif" or "content" — only the search phrase
 - The GIF complements "content"; "content" stays required (a short caption is fine)`;
@@ -58,7 +58,7 @@ const GIF_SECTION = `
 const STICKER_SECTION = `
 ## STICKER ATTACHMENTS (optional)
 
-- "sticker": optional string — a SHORT English search phrase (2-5 words) for a transparent sticker, e.g. "thumbs up cat", "anime crying"
+- "sticker": optional string — a SHORT English search phrase (2-5 words) for a transparent sticker, derived from THIS scene like GIF searches and varied across the feed
 - Same discipline as GIFs: sparingly, at most 1-2 per generation, no URLs
 - A message may carry "sticker" OR "gif", never both`;
 
@@ -74,15 +74,34 @@ const MEME_SECTION = `
 - A message carries at most ONE media field ("gif", "sticker" or "meme")`;
 
 /**
- * Build the full contract for a generation. With every media feature off the
- * output is byte-identical to the plain PROMPT_CONTRACT.
- * @param {{ gif?: boolean, sticker?: boolean, meme?: boolean }} media
+ * Reaction emotes: teaches the model the renderable codes of the CURRENT
+ * emote pack (built-in + user's 7TV set). Codes without the pack behind them
+ * are never listed, so the model can't emit dead codes.
+ * @param {string[]} codes
  * @returns {string}
  */
-export function buildContract({ gif = false, sticker = false, meme = false } = {}) {
+function emoteSection(codes) {
+    return `
+## REACTION EMOTES (optional)
+
+- In "reactions", "emoji" may be an emote CODE from this pack instead of a unicode emoji:
+${codes.join(', ')}
+- These are Twitch/Discord-style meme emotes — use them for meme moods (cope, hype, cringe, dread, smug); keep plain unicode emoji for simple emotions
+- Only codes from the list render as pictures; anything else silently shows as text
+- Emotes are reactions, not message text — "content" still carries the words`;
+}
+
+/**
+ * Build the full contract for a generation. With every media feature off the
+ * output is byte-identical to the plain PROMPT_CONTRACT.
+ * @param {{ gif?: boolean, sticker?: boolean, meme?: boolean, emoteCodes?: string[]|null }} media
+ * @returns {string}
+ */
+export function buildContract({ gif = false, sticker = false, meme = false, emoteCodes = null } = {}) {
     const sections = [PROMPT_CONTRACT];
     if (gif) sections.push(GIF_SECTION);
     if (sticker) sections.push(STICKER_SECTION);
     if (meme) sections.push(MEME_SECTION);
+    if (Array.isArray(emoteCodes) && emoteCodes.length > 0) sections.push(emoteSection(emoteCodes));
     return sections.join('\n');
 }

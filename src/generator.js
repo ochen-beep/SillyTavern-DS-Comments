@@ -9,6 +9,7 @@
  */
 
 import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastAIPost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag, getGiphyKey } from './core.js';
+import { refreshEmoteManifest, getEmoteCodes } from './emotes.js';
 import { planPostImages, loadImageParts } from './images.js';
 import { PROMPT_CONTRACT, buildContract } from './prompt-contract.js';
 import { resolveCommentMedia } from './media.js';
@@ -335,6 +336,7 @@ function mediaFeatures(settings) {
         gif: !!provider,
         sticker: !!provider && settings.mediaStickers !== false,
         meme: settings.mediaMemes === true,
+        emotes: settings.reactionEmotes === true,
     };
 }
 
@@ -343,14 +345,17 @@ function mediaFeatures(settings) {
  * field. Empty when every media feature is off, so legacy fingerprints stay
  * byte-identical (same discipline as imagesHash). Rating participates: it
  * reaches both provider requests and, transitively, what gets attached.
+ * Reaction emotes change the contract text (pack codes) and the rendered
+ * reactions, so the flag and the set id participate too.
  */
 function computeMediaHash(settings) {
     const media = mediaFeatures(settings);
-    if (!media.gif && !media.sticker && !media.meme) return '';
+    if (!media.gif && !media.sticker && !media.meme && !media.emotes) return '';
     const rating = ['off', 'low', 'medium', 'high'].includes(settings.mediaRating)
         ? settings.mediaRating
         : 'medium';
-    return hashFingerprint(`media:${media.provider}|${media.sticker}|${media.meme}|${rating}`);
+    const setId = media.emotes ? String(settings.emoteSetId || '').trim() : '';
+    return hashFingerprint(`media:${media.provider}|${media.sticker}|${media.meme}|${media.emotes}|${setId}|${rating}`);
 }
 
 function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwipeIdx }) {
@@ -359,8 +364,12 @@ function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwi
     const history = buildChatHistoryParts(anchorMsgId, anchorSwipeIdx, ctx);
     const pastComments = buildPastCommentParts(anchorMsgId);
     const media = mediaFeatures(settings);
-    const contract = (media.gif || media.sticker || media.meme)
-        ? buildContract(media)
+    // The manifest cache is refreshed before render (generateFeed); the codes
+    // here ride the same cache — a stale-but-populated cache only shifts the
+    // taught code list, never breaks rendering.
+    const emoteCodes = media.emotes ? getEmoteCodes() : null;
+    const contract = (media.gif || media.sticker || media.meme || media.emotes)
+        ? buildContract({ ...media, emoteCodes })
         : PROMPT_CONTRACT;
     const parts = {
         ...context,
@@ -545,8 +554,10 @@ function _fpSettingsKey(s) {
         // Image attach mode changes the imagesHash side of the fp.
         s.includeImages,
         // Media features change the contract text (prompt) and may append
-        // media to messages — both are generation inputs.
+        // media to messages — both are generation inputs. Reaction emotes
+        // change the taught code list and the rendered chips.
         s.mediaProvider, s.mediaStickers, s.mediaMemes,
+        s.reactionEmotes, s.emoteSetId,
         s.promptTemplate, s.enableJailbreakBlock,
         s.jailbreakRole, s.jailbreakText,
     ].join('|');
@@ -914,6 +925,17 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             trace('generateFeed: discarding stale result (epoch changed during media resolution)');
             recordStale('media');
             return;
+        }
+
+        // Reaction emotes render synchronously from the manifest cache — make
+        // sure it reflects the current settings before the chips are built.
+        // Failure leaves reactions as plain text (renderer degrades by design).
+        if (mediaFeatures(settings).emotes) {
+            try {
+                await refreshEmoteManifest();
+            } catch (e) {
+                warn('refreshEmoteManifest failed — reactions stay text-only:', e);
+            }
         }
 
         const html = renderMessages(messages);

@@ -11,9 +11,16 @@
  */
 
 import '../test-helpers/stub-runtime.mjs';
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { state } from '../src/core.js';
 import { renderMessages, upgradeMediaPlaceholders } from '../src/renderer.js';
+import { _setEmoteManifest } from '../src/emotes.js';
+
+beforeEach(() => {
+    state.settings = { reactionEmotes: true };
+    _setEmoteManifest({ builtin: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } });
+});
 
 const msg = (o) => ({ username: o.username ?? 'u', content: o.content ?? '', replyTo: o.replyTo ?? null, replyQuote: o.replyQuote ?? null, reactions: o.reactions ?? [], media: o.media, gif: o.gif, sticker: o.sticker, meme: o.meme });
 
@@ -213,7 +220,7 @@ test('upgradeMediaPlaceholders: upgrades placeholder to img with allowlisted URL
         'data-dsc-media-type': 'gif',
         'data-dsc-media-alt': 'cat',
     });
-    const feed = { querySelectorAll: (sel) => sel === '[data-dsc-media-src]' ? [placeholder] : [] };
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
     assert.equal(upgradeMediaPlaceholders(feed), 1);
     assert.ok(placeholder.child);
     assert.equal(placeholder.child.src, 'https://media.giphy.com/a.gif');
@@ -309,4 +316,32 @@ test('upgradeMediaPlaceholders ignores non-memegen URLs for repair', () => {
     const feed = { querySelectorAll: () => [placeholder] };
     assert.equal(upgradeMediaPlaceholders(feed), 1);
     assert.equal(placeholder.child.src, 'https://media.giphy.com/media/x.gif?a=b');
+});
+
+// ── reaction emote chips (code → manifest → img) ──
+
+test('upgradeMediaPlaceholders upgrades emote codes through the live manifest', () => {
+    state.settings.reactionEmotes = true;
+    _setEmoteManifest({ builtin: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } });
+    const placeholder = makePlaceholder({ 'data-dsc-emote-code': 'monkaS' });
+    const feed = { querySelectorAll: () => [placeholder] };
+    assert.equal(upgradeMediaPlaceholders(feed), 1);
+    assert.equal(placeholder.child.src, 'https://cdn.betterttv.net/emote/b/2x.webp', 'URL comes from the manifest, not the cached HTML');
+    assert.equal(placeholder.child.className, 'dsc_reaction_emote_img');
+});
+
+test('upgradeMediaPlaceholders degrades unknown emote codes to textual codes', () => {
+    state.settings.reactionEmotes = true;
+    _setEmoteManifest({ builtin: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } });
+    const placeholder = makePlaceholder({ 'data-dsc-emote-code': 'TotallyUnknown' });
+    const feed = { querySelectorAll: () => [placeholder] };
+    assert.equal(upgradeMediaPlaceholders(feed), 1);
+    assert.ok(!placeholder.child, 'no img for an unknown code');
+    assert.equal(placeholder.textContent, ':TotallyUnknown:', 'chip degrades to the textual code');
+    // feature off → same textual degradation (reactions stay readable)
+    state.settings.reactionEmotes = false;
+    const placeholder2 = makePlaceholder({ 'data-dsc-emote-code': 'monkaS' });
+    const feed2 = { querySelectorAll: () => [placeholder2] };
+    assert.equal(upgradeMediaPlaceholders(feed2), 1);
+    assert.equal(placeholder2.textContent, ':monkaS:');
 });

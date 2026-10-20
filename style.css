@@ -354,6 +354,15 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 .dsc_reaction:active { transform: scale(0.92); }
 .dsc_reaction_emoji { font-size: 1.05em; line-height: 1; }
 .dsc_reaction_count { font-size: 0.78em; font-weight: 600; color: var(--dsc-text); opacity: 0.8; }
+/* emote reaction chip: picture sized to the text line on every device —
+   scales with the feed's font settings, never overflows the chip */
+.dsc_reaction_emote_img {
+    display: block;
+    height: 1.5em;
+    width: auto;
+    max-width: 64px;
+    border-radius: 3px;
+}
 
 /* status messages (error/cancel/info) */
 .dsc_status { text-align: center; padding: 24px 16px; color: var(--dsc-text); opacity: 0.7; font-size: 0.9em; }

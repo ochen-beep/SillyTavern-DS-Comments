@@ -255,7 +255,7 @@ test('showHtml upgrades media placeholders to real <img> elements', () => {
         classList: { add() {} },
         textContent: '',
     };
-    feed.querySelectorAll = (sel) => sel === '[data-dsc-media-src]' ? [placeholder] : [];
+    feed.querySelectorAll = (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [];
     assert.equal(c.showHtml('<div class="dsc_gif" data-dsc-media-src="https://media.giphy.com/a.gif"></div>'), true);
     assert.ok(placeholder._img, 'placeholder received an img child');
     assert.equal(placeholder._img.src, 'https://media.giphy.com/a.gif');

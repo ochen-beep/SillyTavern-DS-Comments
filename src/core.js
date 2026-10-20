@@ -98,6 +98,13 @@ export const defaultSettings = Object.freeze({
     mediaStickers: true,
     mediaMemes: false,
 
+    // reaction emotes: Twitch/Discord-style picture reactions. The model emits
+    // :codes: in the reactions' emoji field; they are mapped to images through
+    // a whitelist manifest (builtin pack + optional 7TV emote-set) — the model
+    // never supplies URLs, unknown codes degrade to plain text.
+    reactionEmotes: false,
+    emoteSetId: '',
+
     // prompt template: builtins in chat-styles/*.md ('main', 'test' — vibe) + user copies.
     // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
     promptTemplate: 'main',
@@ -454,6 +461,8 @@ export async function loadSettings() {
     }
     state.settings.mediaStickers = state.settings.mediaStickers !== false;
     state.settings.mediaMemes = state.settings.mediaMemes === true;
+    state.settings.reactionEmotes = state.settings.reactionEmotes === true;
+    state.settings.emoteSetId = String(state.settings.emoteSetId || '').trim();
     if (!state.settings.soundFiles) state.settings.soundFiles = {};
     if (!state.settings.soundId) state.settings.soundId = 'default';
 

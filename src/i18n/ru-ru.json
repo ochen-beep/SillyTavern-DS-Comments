@@ -204,5 +204,8 @@
     "dscomments.settings.mediaGiphyKey": "API-ключ Giphy",
     "dscomments.settings.mediaMemes": "Мемы (memegen.link)",
     "dscomments.settings.mediaMemesHint": "Комментаторы могут сами сочинять мемы на известных шаблонах. API-ключ не нужен.",
+    "dscomments.settings.reactionEmotes": "Реакции-эмоуты (мемный пак)",
+    "dscomments.settings.reactionEmotesHint": "Реакции могут быть картинками в стиле Twitch/Discord вместо обычных эмодзи. Встроенный пак уже есть; можно добавить свой сет 7TV по id.",
+    "dscomments.settings.emoteSetIdPh": "ID сета 7TV (необязательно)",
     "dscomments.media.keySaveError": "Не удалось сохранить API-ключ Giphy."
 }

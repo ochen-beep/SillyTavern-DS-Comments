@@ -101,3 +101,20 @@ test('media sections reference the fields the parser reads', () => {
     assert.match(all, /"meme"/);
     assert.match(all, /"template"/);
 });
+
+test('reaction emote codes enter the contract only when the pack provides them', () => {
+    const base = buildContract({});
+    assert.ok(!base.includes('REACTION EMOTES'), 'no emote section without codes');
+    const emptyPack = buildContract({ emoteCodes: [] });
+    assert.ok(!emptyPack.includes('REACTION EMOTES'), 'an empty pack teaches nothing');
+});
+
+test('buildContract teaches the emote code list when provided', () => {
+    const withEmotes = buildContract({ emoteCodes: ['FeelsGoodMan', 'monkaS'] });
+    assert.match(withEmotes, /REACTION EMOTES/);
+    assert.match(withEmotes, /FeelsGoodMan, monkaS/);
+    // media sections and the emote section compose
+    const mixed = buildContract({ meme: true, emoteCodes: ['LuL'] });
+    assert.match(mixed, /MEME ATTACHMENTS/);
+    assert.match(mixed, /REACTION EMOTES/);
+});

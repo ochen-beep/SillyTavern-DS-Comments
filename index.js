@@ -44,6 +44,7 @@ import {
 } from './src/ui/settings-sync.js';
 import { createLorebookPicker } from './src/ui/lorebook-picker.js';
 import { getChatLoreConfig, saveChatLoreConfig } from './src/lorebooks.js';
+import { refreshEmoteManifest } from './src/emotes.js';
 import { lastCustomEndpointDebug } from './src/connection.js';
 import {
     toggleTypographyPopover, closeTypographyPopover, isTypographyOpen,
@@ -329,6 +330,13 @@ async function init(isCancelled) {
             _launcherObserver.observe(sendForm, { childList: true, subtree: true });
             if (state.settings.enabled) ensureLauncher();
         });
+    }
+
+    // Warm the emote manifest cache so cache restores right after page load
+    // upgrade reaction chips to images instead of textual codes. Fire-and-
+    // forget: generations refresh it again before rendering.
+    if (state.settings.reactionEmotes === true) {
+        refreshEmoteManifest().catch((e) => warn('emote manifest warmup failed:', e));
     }
 
     log('Initialized.');

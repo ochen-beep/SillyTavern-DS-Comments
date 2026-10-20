@@ -1,0 +1,29 @@
+{
+  "_comment": "Built-in reaction emote pack. Curated BetterTTV global emotes, hotlinked from their CDN (webp, 2x). Extend freely: code → image URL. Codes are what the model is taught to emit in reactions.",
+  "emotes": {
+    "DatSauce": "https://cdn.betterttv.net/emote/54fa903b01e468494b85b53f/2x.webp",
+    "ForeverAlone": "https://cdn.betterttv.net/emote/54fa909b01e468494b85b542/2x.webp",
+    "GabeN": "https://cdn.betterttv.net/emote/54fa90ba01e468494b85b543/2x.webp",
+    "ShoopDaWhoop": "https://cdn.betterttv.net/emote/54fa932201e468494b85b555/2x.webp",
+    "TwaT": "https://cdn.betterttv.net/emote/54fa935601e468494b85b557/2x.webp",
+    "WatChuSay": "https://cdn.betterttv.net/emote/54fa99b601e468494b85b55d/2x.webp",
+    "AngelThump": "https://cdn.betterttv.net/emote/566ca1a365dbbdab32ec055b/2x.webp",
+    "Hhhehehe": "https://cdn.betterttv.net/emote/566ca02865dbbdab32ec0547/2x.webp",
+    "RarePepe": "https://cdn.betterttv.net/emote/555015b77676617e17dd2e8e/2x.webp",
+    "haHAA": "https://cdn.betterttv.net/emote/555981336ba1901877765555/2x.webp",
+    "FeelsBirthdayMan": "https://cdn.betterttv.net/emote/55b6524154eefd53777b2580/2x.webp",
+    "KappaCool": "https://cdn.betterttv.net/emote/560577560874de34757d2dc0/2x.webp",
+    "FeelsBadMan": "https://cdn.betterttv.net/emote/566c9fc265dbbdab32ec053b/2x.webp",
+    "FeelsGoodMan": "https://cdn.betterttv.net/emote/566c9fde65dbbdab32ec053e/2x.webp",
+    "FireSpeed": "https://cdn.betterttv.net/emote/566c9ff365dbbdab32ec0541/2x.webp",
+    "NaM": "https://cdn.betterttv.net/emote/566ca06065dbbdab32ec054e/2x.webp",
+    "SourPls": "https://cdn.betterttv.net/emote/566ca38765dbbdab32ec0560/2x.webp",
+    "LuL": "https://cdn.betterttv.net/emote/567b00c61ddbe1786688a633/2x.webp",
+    "monkaS": "https://cdn.betterttv.net/emote/56e9f494fff3cc5c35e5287e/2x.webp",
+    "VapeNation": "https://cdn.betterttv.net/emote/56f5be00d48006ba34f530a4/2x.webp",
+    "FeelsAmazingMan": "https://cdn.betterttv.net/emote/5733ff12e72c3c0814233e20/2x.webp",
+    "DuckerZ": "https://cdn.betterttv.net/emote/573d38b50ffbf6cc5cc38dc9/2x.webp",
+    "Wowee": "https://cdn.betterttv.net/emote/58d2e73058d8950a875ad027/2x.webp",
+    "DogChamp": "https://cdn.betterttv.net/emote/5ffdf28dc96152314ad63960/2x.webp"
+  }
+}
