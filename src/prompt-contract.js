@@ -50,7 +50,7 @@ Example (note: reply's "content" is a real message, and its "quote" is copied fr
 const GIF_SECTION = `
 ## GIF ATTACHMENTS (optional)
 
-- "gif": optional string — a SHORT English search phrase (2-5 words) describing a reaction GIF. Derive it from THIS scene — its situation, an object, the beat's exact emotion — and vary the searches across the feed; do not reuse a stock phrase when the scene suggests something funnier
+- "gif": optional string — a SHORT English search phrase (2-5 words) describing a reaction GIF. Anchor on a classic reaction mood, then adapt the words to THIS scene, and vary the moods across the feed: shock ("cat shocked", "jaw drop"), hype ("mic drop", "confetti explosion"), despair ("head in hands", "crying on the floor"), cringe ("cringe so hard", "yikes"), cope ("clown makeup", "this is fine"), applause ("slow clap", "standing ovation")
 - Use a GIF only when it genuinely amplifies the emotion of the message — at most 1-2 GIFs per generation, most messages have none
 - NEVER put URLs or links in "gif" or "content" — only the search phrase
 - The GIF complements "content"; "content" stays required (a short caption is fine)`;
