@@ -700,6 +700,17 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
 
     try {
         const phaseStartedAt = performance.now();
+        // Reaction emotes: the manifest must exist BEFORE the prompt is built —
+        // the contract teaches the live code list. The cache makes every later
+        // touch (init warmup) a no-op; a dead CDN degrades to text reactions.
+        if (mediaFeatures(settings).emotes) {
+            try {
+                await refreshEmoteManifest(signal);
+            } catch (e) {
+                if (e?.name === 'AbortError') throw e;
+                warn('refreshEmoteManifest failed — reactions stay text-only:', e);
+            }
+        }
         const stylePrompt = await loadStylePrompt();
         markPhase('style', phaseStartedAt);
         if (!isEpochCurrent(epoch)) {
@@ -925,17 +936,6 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             trace('generateFeed: discarding stale result (epoch changed during media resolution)');
             recordStale('media');
             return;
-        }
-
-        // Reaction emotes render synchronously from the manifest cache — make
-        // sure it reflects the current settings before the chips are built.
-        // Failure leaves reactions as plain text (renderer degrades by design).
-        if (mediaFeatures(settings).emotes) {
-            try {
-                await refreshEmoteManifest();
-            } catch (e) {
-                warn('refreshEmoteManifest failed — reactions stay text-only:', e);
-            }
         }
 
         const html = renderMessages(messages);

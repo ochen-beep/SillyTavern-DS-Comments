@@ -77,3 +77,40 @@ test('refreshEmoteManifest: reacts to settings and fetches the 7TV set', async (
         globalThis.fetch = realFetch;
     }
 });
+
+test('refreshEmoteManifest: a dead 7TV set degrades to the builtin pack', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u.includes('7tv.io')) throw new Error('network dead');
+        if (u.endsWith('/emotes/manifest.json')) {
+            return { ok: true, json: async () => ({ emotes: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } }) };
+        }
+        throw new Error(`unexpected fetch ${u}`);
+    };
+    try {
+        _setEmoteManifest({});
+        state.settings.emoteSetId = 'dead';
+        await refreshEmoteManifest();
+        assert.equal(getEmoteUrl('monkaS'), 'https://cdn.betterttv.net/emote/b/2x.webp', 'builtin pack survives');
+        assert.equal(getEmoteUrl('Whatever'), null);
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+});
+
+test('refreshEmoteManifest: external abort propagates as AbortError', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error('fetch must not be reached after abort'); };
+    try {
+        _setEmoteManifest({});
+        await assert.rejects(
+            refreshEmoteManifest(controller.signal),
+            (e) => e?.name === 'AbortError',
+        );
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+});
