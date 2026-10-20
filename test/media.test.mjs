@@ -183,6 +183,25 @@ test('resolveCommentMedia: provider failure / empty results degrade to text-only
     assert.equal(n2, 0);
 });
 
+test('resolveCommentMedia: zero-result search retries with the leading words', async () => {
+    const queries = [];
+    fetchHandler = (url) => {
+        const u = new URL(url);
+        queries.push(u.searchParams.get('q'));
+        return {
+            ok: true,
+            json: async () => queries.length === 1
+                ? { data: [] }
+                : { data: [{ images: { downsized: { url: 'https://media.giphy.com/rescued.gif' } } }] },
+        };
+    };
+    const msgs = [{ username: 'a', content: 'x', gif: 'knight armor crying' }];
+    const n = await resolveCommentMedia(msgs, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
+    assert.equal(n, 1);
+    assert.deepEqual(queries, ['knight armor crying', 'knight armor'], 'first full phrase, then the trimmed core');
+    assert.equal(msgs[0].media.url, 'https://media.giphy.com/rescued.gif');
+});
+
 test('resolveCommentMedia: picks a random candidate, not the fixed first result', async () => {
     fetchHandler = () => ({
         ok: true,

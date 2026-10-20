@@ -5,7 +5,7 @@
  * reactions, reply chains, mini-markdown, DOMPurify sanitization.
  */
 
-import { escapeHtml, sanitize, hashHue } from './core.js';
+import { escapeHtml, sanitize, hashHue, trace } from './core.js';
 import { isAllowedMediaUrl } from './media.js';
 import { getEmoteUrl } from './emotes.js';
 
@@ -125,6 +125,7 @@ export function upgradeMediaPlaceholders(root) {
                 img.setAttribute('decoding', 'async');
                 img.alt = `:${emoteCode}:`;
                 img.src = url;
+                img.addEventListener('error', () => trace(`emote failed to load: :${emoteCode}: ${url}`));
                 node.textContent = '';
                 node.appendChild?.(img);
                 upgraded++;
@@ -146,6 +147,7 @@ export function upgradeMediaPlaceholders(root) {
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
             img.src = url;
+            img.addEventListener('error', () => trace(`media failed to load: ${url}`));
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);

@@ -58,7 +58,8 @@ const GIF_SECTION = `
 const STICKER_SECTION = `
 ## STICKER ATTACHMENTS (optional)
 
-- "sticker": optional string — a SHORT English search phrase (2-5 words) for a transparent sticker, derived from THIS scene like GIF searches and varied across the feed
+- "sticker": optional string — a SHORT English search phrase (1-3 words) for a transparent sticker
+- The sticker pool is SMALL: simple gestures and moods hit it (thumbs up, crying, shock, clap, saluting); long scene-specific phrases usually find nothing
 - Same discipline as GIFs: sparingly, at most 1-2 per generation, no URLs
 - A message may carry "sticker" OR "gif", never both`;
 

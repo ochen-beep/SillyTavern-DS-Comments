@@ -216,26 +216,38 @@ export function buildMemeUrl(template, spec) {
 // ── Provider searches ──
 
 async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
-    const params = new URLSearchParams({
-        api_key: apiKey,
-        q: query,
-        limit: String(SEARCH_LIMIT),
-    });
-    const mapped = GIPHY_RATING[rating];
-    if (mapped) params.set('rating', mapped);
-    const endpoint = sticker ? GIPHY_STICKER_SEARCH_URL : GIPHY_SEARCH_URL;
-    const response = await fetch(`${endpoint}?${params}`, { method: 'GET', signal });
-    if (!response.ok) throw new Error(`giphy: HTTP ${response.status}`);
-    const payload = await response.json();
-    const results = Array.isArray(payload?.data) ? payload.data : [];
-    // Collect every usable candidate and take one at random — relevance order
-    // is deterministic, so always taking the first attaches the identical GIF
-    // to every regeneration of the same query.
-    const urls = [];
-    for (const item of results) {
-        const images = item?.images;
-        const url = images?.downsized?.url ?? images?.fixed_height?.url ?? images?.original?.url;
-        if (typeof url === 'string' && url) urls.push(url);
+    const search = async (q) => {
+        const params = new URLSearchParams({
+            api_key: apiKey,
+            q,
+            limit: String(SEARCH_LIMIT),
+        });
+        const mapped = GIPHY_RATING[rating];
+        if (mapped) params.set('rating', mapped);
+        const endpoint = sticker ? GIPHY_STICKER_SEARCH_URL : GIPHY_SEARCH_URL;
+        const response = await fetch(`${endpoint}?${params}`, { method: 'GET', signal });
+        if (!response.ok) throw new Error(`giphy: HTTP ${response.status}`);
+        const payload = await response.json();
+        const results = Array.isArray(payload?.data) ? payload.data : [];
+        // Collect every usable candidate and take one at random — relevance order
+        // is deterministic, so always taking the first attaches the identical GIF
+        // to every regeneration of the same query.
+        const urls = [];
+        for (const item of results) {
+            const images = item?.images;
+            const url = images?.downsized?.url ?? images?.fixed_height?.url ?? images?.original?.url;
+            if (typeof url === 'string' && url) urls.push(url);
+        }
+        return urls;
+    };
+
+    // A zero-result search retries once with the leading words: the contract
+    // asks for scene-specific phrases, and those often miss Giphy's index in
+    // full while their trimmed core still hits.
+    let urls = await search(query);
+    if (urls.length === 0) {
+        const short = query.split(/\s+/).slice(0, 2).join(' ');
+        if (short && short.toLowerCase() !== query.toLowerCase()) urls = await search(short);
     }
     if (urls.length === 0) return null;
     return urls[Math.floor(Math.random() * urls.length)];
@@ -332,7 +344,7 @@ export async function resolveCommentMedia(messages, opts = {}) {
             msg.media = { type: request.type, url, alt: _mediaAlt(request.type, request) };
             resolved++;
         } else if (!url) {
-            trace(`resolveCommentMedia: no result for ${request.type} request`);
+            trace(`resolveCommentMedia: no result for ${request.type} request "${request.type === 'meme' ? request.spec?.template : request.query}"`);
         }
     }
     return resolved;
