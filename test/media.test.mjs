@@ -183,6 +183,26 @@ test('resolveCommentMedia: provider failure / empty results degrade to text-only
     assert.equal(n2, 0);
 });
 
+test('resolveCommentMedia: picks a random candidate, not the fixed first result', async () => {
+    fetchHandler = () => ({
+        ok: true,
+        json: async () => ({ data: [
+            { images: { downsized: { url: 'https://media.giphy.com/1.gif' } } },
+            { images: { downsized: { url: 'https://media.giphy.com/2.gif' } } },
+            { images: { downsized: { url: 'https://media.giphy.com/3.gif' } } },
+        ] }),
+    });
+    const seen = new Set();
+    for (let i = 0; i < 24; i++) {
+        const msgs = [{ username: 'a', content: 'x', gif: 'cat' }];
+        await resolveCommentMedia(msgs, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
+        seen.add(msgs[0].media.url);
+    }
+    // relevance order is deterministic — without the random pick this set has size 1
+    assert.ok(seen.size > 1, 'selection must vary across regenerations');
+    for (const url of seen) assert.match(url, /media\.giphy\.com\/[123]\.gif/);
+});
+
 test('resolveCommentMedia: non-allowlisted provider URL is dropped', async () => {
     fetchHandler = () => ({
         ok: true,

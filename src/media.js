@@ -228,12 +228,17 @@ async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
     if (!response.ok) throw new Error(`giphy: HTTP ${response.status}`);
     const payload = await response.json();
     const results = Array.isArray(payload?.data) ? payload.data : [];
+    // Collect every usable candidate and take one at random — relevance order
+    // is deterministic, so always taking the first attaches the identical GIF
+    // to every regeneration of the same query.
+    const urls = [];
     for (const item of results) {
         const images = item?.images;
         const url = images?.downsized?.url ?? images?.fixed_height?.url ?? images?.original?.url;
-        if (typeof url === 'string' && url) return url;
+        if (typeof url === 'string' && url) urls.push(url);
     }
-    return null;
+    if (urls.length === 0) return null;
+    return urls[Math.floor(Math.random() * urls.length)];
 }
 
 // ── Resolution entry point ──
