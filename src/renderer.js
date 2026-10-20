@@ -62,21 +62,31 @@ function renderMediaFallback(msg) {
 }
 
 /**
- * Heal meme URLs persisted before the unicode-font fix: memegen's default
- * impact font silently drops every non-ASCII caption (cyrillic renders as a
- * blank template). Old cached feeds store the bare URL — if the decoded path
- * carries non-ASCII text and no explicit font, append ?font=notosans at
- * display time. Same host/path as the allowlist entry, only a query param is
- * added, so the security contract is untouched.
+ * Heal meme URLs persisted by older builds. Two generations of breakage:
+ * 1. empty caption segments ('//', trailing '/.png') — memegen 301s them to
+ *    the canonical '_'-filled form and DROPS THE QUERY on redirect, so the
+ *    font param dies and the render target cold-caches for minutes;
+ * 2. bare impact font silently dropping non-ASCII captions — if the decoded
+ *    path carries non-ASCII text and no explicit font, append ?font=notosans.
+ * Same host/path as the allowlist entry; only path filler and a query param
+ * are added, so the security contract is untouched.
  */
 function repairMemeUrl(url) {
-    if (!url.startsWith('https://api.memegen.link/images/') || /[?&]font=/.test(url)) return url;
+    const PREFIX = 'https://api.memegen.link/images/';
+    if (!url.startsWith(PREFIX)) return url;
     try {
-        const queryIdx = url.indexOf('?');
-        const path = decodeURIComponent(queryIdx === -1 ? url : url.slice(0, queryIdx));
-        if (/[^\x00-\x7F]/.test(path)) {
-            return `${url}${url.includes('?') ? '&' : '?'}font=notosans`;
+        const qIdx = url.indexOf('?');
+        const query = qIdx === -1 ? '' : url.slice(qIdx);
+        // Heal only the caption path — the scheme's own '//' must stay intact.
+        let tail = url.slice(PREFIX.length, qIdx === -1 ? undefined : qIdx);
+        tail = tail
+            .replace(/\/(?=\/)/g, '/_')                       // 'a//b'   → 'a/_/b'
+            .replace(/\/\.(png|jpe?g|webp|gif)$/i, '/_.$1');  // 'a/.png' → 'a/_.png'
+        let out = PREFIX + tail + query;
+        if (!/[?&]font=/.test(url) && /[^\x00-\x7F]/.test(decodeURIComponent(PREFIX + tail))) {
+            out += `${out.includes('?') ? '&' : '?'}font=notosans`;
         }
+        return out;
     } catch { /* malformed percent-encoding — keep the original URL */ }
     return url;
 }

@@ -198,12 +198,19 @@ export function buildMemeUrl(template, spec) {
     // Segments are already memegen-safe (encodeMemeText did the escaping and
     // percent-encoding of non-ASCII) — do NOT re-encode: a second layer would
     // turn %D0.. into %25D0.. and mangle the text.
+    //
+    // Empty caption lines are emitted as '_' (one space — renders blank):
+    // memegen 301s empty path segments to this canonical form and STRIPS the
+    // query string on the way, so `//`-shaped URLs lose ?font=notosans in the
+    // redirect and then cold-render for minutes — the browser gives up and
+    // shows a broken image (observed live with 3-line templates).
+    //
     // memegen's default impact font has NO cyrillic glyphs and silently drops
     // every non-ASCII caption (verified live: distinct texts render byte-
     // identical). Any non-ASCII caption switches to Noto Sans, which covers
     // Cyrillic; pure-latin captions keep the canonical impact look.
     const needsUnicodeFont = /[^\x00-\x7F]/.test(`${spec?.top ?? ''}${spec?.bottom ?? ''}`);
-    return `${MEMEGEN_IMAGE_URL}${[template.id, ...segments].join('/')}.png${needsUnicodeFont ? '?font=notosans' : ''}`;
+    return `${MEMEGEN_IMAGE_URL}${[template.id, ...segments.map(s => s || '_')].join('/')}.png${needsUnicodeFont ? '?font=notosans' : ''}`;
 }
 
 // ── Provider searches ──

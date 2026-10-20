@@ -111,15 +111,16 @@ test('meme URL building: 1/2/3-line templates, single encoding', () => {
         buildMemeUrl(drake, { template: 'drake', top: 'no gifs', bottom: 'gifs!' }),
         'https://api.memegen.link/images/drake/no_gifs/gifs!.png',
     );
-    // empty bottom still yields both segments (stable shape for 2-line)
+    // empty bottom is pre-filled with '_' (memegen 301s empty segments to the
+    // canonical '_'-form and drops the query — ?font=notosans would not survive)
     assert.equal(
         buildMemeUrl(drake, { template: 'drake', top: 'only top', bottom: '' }),
-        'https://api.memegen.link/images/drake/only_top/.png',
+        'https://api.memegen.link/images/drake/only_top/_.png',
     );
-    // 3-line template: top → first, bottom → last, middles stay empty
+    // 3-line template: top → first, bottom → last, middles pre-filled with '_'
     assert.equal(
         buildMemeUrl(db, { template: 'db', top: 'me', bottom: 'her' }),
-        'https://api.memegen.link/images/db/me//her.png',
+        'https://api.memegen.link/images/db/me/_/her.png',
     );
     // 1-line templates take the caption alone
     assert.equal(
@@ -129,7 +130,7 @@ test('meme URL building: 1/2/3-line templates, single encoding', () => {
     // Cyrillic is percent-encoded exactly once and switches to the unicode font
     // (memegen's impact has no cyrillic glyphs and silently drops the caption)
     const url = buildMemeUrl(drake, { template: 'drake', top: 'кот', bottom: '' });
-    assert.equal(url, 'https://api.memegen.link/images/drake/' + encodeURIComponent('кот') + '/.png?font=notosans');
+    assert.equal(url, 'https://api.memegen.link/images/drake/' + encodeURIComponent('кот') + '/_.png?font=notosans');
     assert.equal(buildMemeUrl(null, { template: 'x' }), null);
 });
 
@@ -300,18 +301,18 @@ test('meme URL building: Daily Struggle puts both captions on the buttons', () =
     const ds = { id: 'ds', name: 'Daily Struggle', keywords: ['two buttons'], lines: 3 };
     assert.equal(
         buildMemeUrl(ds, { template: 'ds', top: 'poechat za tabletkami', bottom: 'sidet doma' }),
-        'https://api.memegen.link/images/ds/poechat_za_tabletkami/sidet_doma/.png',   // latin captions → default impact
+        'https://api.memegen.link/images/ds/poechat_za_tabletkami/sidet_doma/_.png',   // latin captions → default impact
     );
     // cyrillic variant keeps the unicode font
     const cyr = encodeURIComponent('поехать');
     const url = buildMemeUrl(ds, { template: 'ds', top: 'поехать', bottom: 'сидеть' });
-    assert.ok(url.endsWith(`/${cyr}/${encodeURIComponent('сидеть')}/.png?font=notosans`));
+    assert.ok(url.endsWith(`/${cyr}/${encodeURIComponent('сидеть')}/_.png?font=notosans`));
 });
 
-test('meme URL building: default 3-line layout keeps middle empty (regression)', () => {
+test('meme URL building: default 3-line layout pre-fills the middle (no 301 bait)', () => {
     const db = { id: 'db', name: 'Distracted Boyfriend', keywords: [], lines: 3 };
     assert.equal(
         buildMemeUrl(db, { template: 'db', top: 'me', bottom: 'her' }),
-        'https://api.memegen.link/images/db/me//her.png',
+        'https://api.memegen.link/images/db/me/_/her.png',
     );
 });

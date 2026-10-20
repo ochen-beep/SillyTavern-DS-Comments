@@ -282,7 +282,26 @@ test('upgradeMediaPlaceholders does not double-append the font param', () => {
     const placeholder = makePlaceholder({ 'data-dsc-media-src': `https://api.memegen.link/images/drake/${cyr}/.png?font=notosans`, 'data-dsc-media-type': 'meme' });
     const feed = { querySelectorAll: () => [placeholder] };
     assert.equal(upgradeMediaPlaceholders(feed), 1);
-    assert.equal(placeholder.child.src, `https://api.memegen.link/images/drake/${cyr}/.png?font=notosans`);
+    // the font param stays singular; the empty trailing segment is healed too
+    assert.equal(placeholder.child.src, `https://api.memegen.link/images/drake/${cyr}/_.png?font=notosans`);
+});
+
+test('upgradeMediaPlaceholders heals empty caption segments (memegen 301 bait)', () => {
+    // cached 3-line meme with an empty middle — memegen 301s this shape and
+    // drops the query (font dies with it); the healed URL is canonical
+    const top = encodeURIComponent('Тейн в чулках');
+    const bottom = encodeURIComponent('письмо от душнилы');
+    const placeholder = makePlaceholder({ 'data-dsc-media-src': `https://api.memegen.link/images/db/${top}//${bottom}.png?font=notosans`, 'data-dsc-media-type': 'meme' });
+    const feed = { querySelectorAll: () => [placeholder] };
+    assert.equal(upgradeMediaPlaceholders(feed), 1);
+    assert.equal(placeholder.child.src, `https://api.memegen.link/images/db/${top}/_/${bottom}.png?font=notosans`);
+});
+
+test('upgradeMediaPlaceholders heals trailing empty segment without adding font to latin URLs', () => {
+    const placeholder = makePlaceholder({ 'data-dsc-media-src': 'https://api.memegen.link/images/ds/a/b/.png', 'data-dsc-media-type': 'meme' });
+    const feed = { querySelectorAll: () => [placeholder] };
+    assert.equal(upgradeMediaPlaceholders(feed), 1);
+    assert.equal(placeholder.child.src, 'https://api.memegen.link/images/ds/a/b/_.png');
 });
 
 test('upgradeMediaPlaceholders ignores non-memegen URLs for repair', () => {
