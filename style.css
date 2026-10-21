@@ -572,6 +572,13 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 .dsc_field_group > .dsc_toggle_row { padding-left: 0; padding-right: 0; }
 @media (hover: hover) { .dsc_toggle_row:hover { background: rgba(255, 255, 255, 0.05); } }
 .dsc_field_group { margin: 8px 6px; }
+/* Подсказка <small> идёт инлайном сразу после текста <b> внутри label — при
+   переносе метки на две строки хинт прилипает к её второй строке. Блочный
+   display гарантирует перенос на новую строку независимо от темы и локали. */
+.dsc_hint {
+    display: block; margin-top: 3px;
+    font-size: 0.82em; line-height: 1.35; opacity: 0.62;
+}
 .dsc_field_group_separated { margin-top: 16px; }
 .dsc_field_label { display: block; font-size: 0.78em; font-weight: 600; opacity: 0.7; margin-bottom: 5px; }
 .dsc_sound_controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr); align-items: center; gap: 10px; }
