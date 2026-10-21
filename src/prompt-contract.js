@@ -48,7 +48,7 @@ Example (note: reply's "content" is a real message, and its "quote" is copied fr
  * requests against the media APIs itself.
  */
 const GIF_SECTION = `
-## GIF ATTACHMENTS (optional)
+## GIF ATTACHMENTS
 
 - "gif": optional string — a SHORT English search phrase (2-5 words) describing a reaction GIF. Anchor on a classic reaction mood, then adapt the words to THIS scene, and vary the moods across the feed: shock ("cat shocked", "jaw drop"), hype ("mic drop", "confetti explosion"), despair ("head in hands", "crying on the floor"), cringe ("cringe so hard", "yikes"), cope ("clown makeup", "this is fine"), applause ("slow clap", "standing ovation")
 - Use a GIF only when it genuinely amplifies the emotion of the message — at most 1-2 GIFs per generation, most messages have none
@@ -56,7 +56,7 @@ const GIF_SECTION = `
 - The GIF complements "content"; "content" stays required (a short caption is fine)`;
 
 const STICKER_SECTION = `
-## STICKER ATTACHMENTS (optional)
+## STICKER ATTACHMENTS
 
 - "sticker": optional string — a SHORT English search phrase (1-3 words) for a transparent sticker
 - The sticker pool is SMALL: simple gestures and moods hit it (thumbs up, crying, shock, clap, saluting); long scene-specific phrases usually find nothing
@@ -64,7 +64,7 @@ const STICKER_SECTION = `
 - A message may carry "sticker" OR "gif", never both`;
 
 const MEME_SECTION = `
-## MEME ATTACHMENTS (optional)
+## MEME ATTACHMENTS
 
 - "meme": optional object {"template": "...", "top": "...", "bottom": "..."} — the meme YOU compose: pick a well-known template by name and write the caption lines yourself
 - VARY templates across the feed and across generations — the audience notices reruns. Dig past the overused three (drake, two buttons, distracted boyfriend) into the wider classics: expanding brain, panik-kalm-panik, change my mind, woman yelling at a cat, epic handshake, is this a pigeon, spiderman pointing, waiting skeleton, waking up surprised — whichever fits THIS scene
@@ -83,7 +83,7 @@ const MEME_SECTION = `
  */
 function emoteSection(codes) {
     return `
-## REACTION EMOTES (optional)
+## REACTION EMOTES
 
 - In "reactions", "emoji" may be an emote CODE from this pack instead of a unicode emoji:
 ${codes.join(', ')}
