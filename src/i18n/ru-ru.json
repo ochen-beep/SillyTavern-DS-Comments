@@ -112,7 +112,6 @@
     "dscomments.settings.imagesOff": "Выкл",
     "dscomments.settings.imagesAuto": "Авто (мультимодальные модели)",
     "dscomments.settings.imagesAlways": "Всегда",
-    "dscomments.settings.imagesHint": "Изображения комментируемого поста прикладываются к промпту — комментаторы реагируют на то, что изображено. В режиме «Авто» картинки прикладываются, только если модель похожа на мультимодальную. Картинки отправляются в выбранный источник комментариев — он может отличаться от основного API чата.",
     "dscomments.settings.pastCommentsDepth": "Сколько прошлых постов включать",
     "dscomments.settings.lore": "Информация о мире",
     "dscomments.settings.loreAuto": "Авто",
@@ -194,7 +193,7 @@
     "dscomments.settings.media": "Гифки и мемы в комментариях",
     "dscomments.settings.mediaOff": "Выключено",
     "dscomments.settings.mediaGiphy": "Giphy",
-    "dscomments.settings.mediaHint": "Комментаторы смогут прикреплять гифки и стикеры из Giphy. Нужен бесплатный API-ключ (developers.giphy.com); он хранится локально в браузере. Модель не выдаёт URL — расширение само ищет и прикрепляет медиа.",
+    "dscomments.settings.mediaHint": "Комментаторы смогут прикреплять гифки и стикеры из Giphy. Нужен бесплатный API-ключ (developers.giphy.com).",
     "dscomments.settings.mediaRating": "Фильтр контента",
     "dscomments.settings.mediaRatingOff": "Выключен (без фильтра)",
     "dscomments.settings.mediaRatingLow": "Низкий",
@@ -206,9 +205,7 @@
     "dscomments.settings.memeMax": "Мемов за генерацию",
     "dscomments.settings.mediaGiphyKey": "API-ключ Giphy",
     "dscomments.settings.mediaMemes": "Мемы (memegen.link)",
-    "dscomments.settings.mediaMemesHint": "Комментаторы могут сами сочинять мемы на известных шаблонах. API-ключ не нужен.",
     "dscomments.settings.reactionEmotes": "Реакции-эмоуты (мемный пак)",
-    "dscomments.settings.reactionEmotesHint": "Реакции могут быть картинками в стиле Twitch/Discord вместо обычных эмодзи. Встроенный пак уже есть; можно добавить свой сет 7TV по id.",
     "dscomments.settings.emoteSetIdPh": "ID сета 7TV (необязательно)",
     "dscomments.media.keySaveError": "Не удалось сохранить API-ключ Giphy."
 }

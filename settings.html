@@ -66,16 +66,6 @@
                 <input type="number" id="dsc_count" class="dsc_input dsc_input_num" min="1" max="100" value="5">
             </div>
 
-            <div class="dsc_field_group">
-                <span class="dsc_field_label"><span data-i18n="dscomments.settings.structured">Structured output</span></span>
-                <select id="dsc_structured" class="dsc_select">
-                    <option value="off" data-i18n="dscomments.settings.structuredOff">Off</option>
-                    <option value="auto" data-i18n="dscomments.settings.structuredAuto">Auto (supported sources)</option>
-                    <option value="always" data-i18n="dscomments.settings.structuredAlways">Always</option>
-                </select>
-                <small class="dsc_hint" data-i18n="dscomments.settings.structuredHint">Enforces the JSON contract at the API level: the model must return the comments object, so refusals and broken arrays largely disappear. Replaces the assistant-role jailbreak on supported sources.</small>
-            </div>
-
             <!-- Sound (nested) -->
             <div class="dsc_sound_controls">
                 <label class="dsc_toggle_row dsc_sound_toggle"><input type="checkbox" id="dsc_sound_enable" class="checkbox">
@@ -157,7 +147,6 @@
                         <option value="auto" data-i18n="dscomments.settings.imagesAuto">Auto (multimodal models)</option>
                         <option value="always" data-i18n="dscomments.settings.imagesAlways">Always</option>
                     </select>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.imagesHint">Images of the commented post are attached to the prompt — commenters react to what is shown. Auto attaches only when the model looks vision-capable. Images are sent to the selected comments source, which may differ from your main chat API.</small>
                 </div>
                 <!-- Comment media: GIFs/stickers via Giphy, memes via memegen.link.
                      The model outputs a search query / meme recipe; the extension resolves
@@ -168,7 +157,7 @@
                         <option value="off" data-i18n="dscomments.settings.mediaOff">Off</option>
                         <option value="giphy" data-i18n="dscomments.settings.mediaGiphy">Giphy</option>
                     </select>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.mediaHint">Commenters can attach reaction GIFs and stickers from Giphy. You need a free API key (developers.giphy.com). The model never outputs URLs — the extension searches and attaches them itself.</small>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.mediaHint">Commenters can attach reaction GIFs and stickers from Giphy. You need a free API key (developers.giphy.com).</small>
                     <div id="dsc_media_provider_body" hidden>
                         <span class="dsc_field_label" data-i18n="dscomments.settings.mediaRating">Content rating</span>
                         <select id="dsc_media_rating" class="dsc_select">
@@ -190,14 +179,12 @@
                         <input type="password" id="dsc_media_giphy_key" class="dsc_input" placeholder="dc6za..." autocomplete="off">
                     </div>
                 </div>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_memes" class="checkbox"> <span><span data-i18n="dscomments.settings.mediaMemes">Memes (memegen.link)</span>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.mediaMemesHint">Commenters can compose their own memes on well-known templates. No API key needed.</small></span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_memes" class="checkbox"> <span data-i18n="dscomments.settings.mediaMemes">Memes (memegen.link)</span></label>
                 <div class="dsc_field_group dsc_field_num" id="dsc_meme_max_group" hidden>
                     <span class="dsc_field_label"><span data-i18n="dscomments.settings.memeMax">Memes per generation</span></span>
                     <input type="number" id="dsc_meme_max" class="dsc_input dsc_input_num" min="0" max="5" value="1">
                 </div>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_reaction_emotes" class="checkbox"> <span><span data-i18n="dscomments.settings.reactionEmotes">Reaction emotes (meme pack)</span>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.reactionEmotesHint">Reactions can use Twitch/Discord-style meme emotes instead of plain emoji. Ships with a built-in pack; optionally add a 7TV emote-set id for more.</small></span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_reaction_emotes" class="checkbox"> <span data-i18n="dscomments.settings.reactionEmotes">Reaction emotes (meme pack)</span></label>
                 <input type="text" id="dsc_emote_set_id" class="dsc_input" data-i18n="[placeholder]dscomments.settings.emoteSetIdPh" placeholder="7TV emote-set id (optional)" autocomplete="off" spellcheck="false">
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_lore_enable" class="checkbox"> <span data-i18n="dscomments.settings.lore">World information</span></label>
                 <div id="dsc_lore_group" hidden>
@@ -242,6 +229,16 @@
             </div>
 
             <div class="dsc_section-divider" style="height:1px;background:rgba(255,255,255,0.08);margin:10px 0"></div>
+
+            <div class="dsc_field_group">
+                <span class="dsc_field_label"><span data-i18n="dscomments.settings.structured">Structured output</span></span>
+                <select id="dsc_structured" class="dsc_select">
+                    <option value="off" data-i18n="dscomments.settings.structuredOff">Off</option>
+                    <option value="auto" data-i18n="dscomments.settings.structuredAuto">Auto (supported sources)</option>
+                    <option value="always" data-i18n="dscomments.settings.structuredAlways">Always</option>
+                </select>
+                <small class="dsc_hint" data-i18n="dscomments.settings.structuredHint">Enforces the JSON contract at the API level: the model must return the comments object, so refusals and broken arrays largely disappear. Replaces the assistant-role jailbreak on supported sources.</small>
+            </div>
 
             <!-- Jailbreak (nested) -->
             <label class="dsc_toggle_row"><input type="checkbox" id="dsc_jb_enable" class="checkbox">
