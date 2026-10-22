@@ -118,3 +118,36 @@ test('buildContract teaches the emote code list when provided', () => {
     assert.match(mixed, /MEME ATTACHMENTS/);
     assert.match(mixed, /REACTION EMOTES/);
 });
+
+test('buildContract teaches per-type caps and omits sections capped at 0', () => {
+    const two = buildContract({ gif: true, gifMax: 5 });
+    assert.match(two, /at most 5 GIFs per generation/);
+    assert.ok(!two.includes('STICKER ATTACHMENTS'));
+
+    const zeroed = buildContract({ gif: true, sticker: true, gifMax: 0, stickerMax: 3 });
+    assert.ok(!zeroed.includes('GIF ATTACHMENTS'), 'cap 0 removes the section');
+    assert.match(zeroed, /at most 3 stickers per generation/);
+});
+
+test('buildContract teaches the one-media-field rule only with multiple media types', () => {
+    assert.ok(!buildContract({ gif: true }).includes('at most ONE media field'));
+    assert.ok(!buildContract({ gif: true, sticker: true, stickerMax: 0 }).includes('at most ONE media field'));
+    assert.match(buildContract({ gif: true, sticker: true }), /at most ONE media field/);
+    assert.match(buildContract({ meme: true, gif: true }), /at most ONE media field/);
+});
+
+test('buildContract singularizes caps of 1', () => {
+    assert.match(buildContract({ meme: true, memeMax: 1 }), /at most 1 meme per generation/);
+    assert.match(buildContract({ sticker: true, stickerMax: 1 }), /at most 1 sticker per generation/);
+});
+
+test('meme section requires content like the gif section does', () => {
+    const meme = buildContract({ meme: true });
+    assert.match(meme, /"content" stays required/);
+});
+
+test('one-media-field rule names only the enabled types', () => {
+    const gifMeme = buildContract({ gif: true, meme: true });
+    assert.match(gifMeme, /at most ONE media field \("gif", "meme"\)/);
+    assert.ok(!gifMeme.includes('"sticker"'), 'disabled sticker type stays out of the rule');
+});

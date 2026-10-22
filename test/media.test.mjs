@@ -355,3 +355,27 @@ test('meme URL building: default 3-line layout pre-fills the middle (no 301 bait
         'https://api.memegen.link/images/db/me/_/her.png',
     );
 });
+
+test('resolveCommentMedia: per-type caps limit both API calls and attachments', async () => {
+    fetchHandler = () => ({
+        ok: true,
+        json: async () => ({ data: [{ images: { downsized: { url: 'https://media2.giphy.com/g.gif' } } }] }),
+    });
+    const messages = [
+        { username: 'a', content: '1', gif: 'cat shocked' },
+        { username: 'b', content: '2', gif: 'mic drop' },
+        { username: 'c', content: '3', gif: 'slow clap' },
+    ];
+    const n = await resolveCommentMedia(messages, { provider: 'giphy', giphyKey: 'G', gifMax: 2 });
+    assert.equal(n, 2);
+    assert.equal(fetchCalls.length, 2, 'capped messages never reach the API');
+    assert.equal(messages[2].media, undefined);
+    assert.equal(messages[0].media.url, 'https://media2.giphy.com/g.gif');
+});
+
+test('resolveCommentMedia: cap 0 disables the type entirely', async () => {
+    const messages = [{ username: 'a', content: 'x', gif: 'cat shocked' }];
+    const n = await resolveCommentMedia(messages, { provider: 'giphy', giphyKey: 'G', gifMax: 0 });
+    assert.equal(n, 0);
+    assert.equal(fetchCalls.length, 0);
+});

@@ -32,6 +32,9 @@ const FIELD_MAP = {
     dsc_media_rating:   { prop: 'mediaRating',                 type: 'select' },
     dsc_media_stickers: { prop: 'mediaStickers',               type: 'checkbox' },
     dsc_media_memes:    { prop: 'mediaMemes',                  type: 'checkbox' },
+    dsc_gif_max:        { prop: 'gifMax',                      type: 'number' },
+    dsc_sticker_max:    { prop: 'stickerMax',                  type: 'number' },
+    dsc_meme_max:       { prop: 'memeMax',                     type: 'number' },
     dsc_reaction_emotes: { prop: 'reactionEmotes',             type: 'checkbox' },
     dsc_emote_set_id:   { prop: 'emoteSetId',                  type: 'text' },
     dsc_structured:     { prop: 'structuredOutput',            type: 'select' },
@@ -237,6 +240,9 @@ export function updateMediaVisibility() {
     // reaction emotes: the 7TV set id only makes sense with the feature on
     const emoteSet = document.getElementById('dsc_emote_set_id');
     if (emoteSet) emoteSet.hidden = state.settings.reactionEmotes !== true;
+    // memes: the per-generation cap rides the feature toggle
+    const memeMaxGroup = document.getElementById('dsc_meme_max_group');
+    if (memeMaxGroup) memeMaxGroup.hidden = state.settings.mediaMemes !== true;
 }
 
 async function syncMediaKeyFields() {

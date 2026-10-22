@@ -588,6 +588,7 @@ function bindSettingsPanelEvents() {
         if (!cfg) return;
         if (el.id === 'dsc_apikey') { flushApiKey(); return; }
         if (el.id === 'dsc_media_provider') syncSettingsSections();
+        if (el.id === 'dsc_media_memes') syncSettingsSections();
         if (el.id === 'dsc_template') {
             state.settings.promptTemplate = el.value;
             saveSettings();

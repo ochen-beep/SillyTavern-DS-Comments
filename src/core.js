@@ -97,6 +97,12 @@ export const defaultSettings = Object.freeze({
     mediaRating: 'medium',
     mediaStickers: true,
     mediaMemes: false,
+    // Per-type caps taught to the contract and enforced by the resolver.
+    // 0 = the type's section leaves the prompt entirely. gif/sticker caps
+    // share the giphy quota (100 req/h on beta keys); memes are keyless.
+    gifMax: 2,
+    stickerMax: 1,
+    memeMax: 1,
 
     // reaction emotes: Twitch/Discord-style picture reactions. The model emits
     // :codes: in the reactions' emoji field; they are mapped to images through
@@ -386,6 +392,9 @@ export const NUMERIC_SETTINGS = Object.freeze({
     fontSize:     Object.freeze({ min: 8, max: 32, fallback: 15 }),
     contextDepth: Object.freeze({ min: 2, max: 50, fallback: 4 }),
     pastCommentsDepth: Object.freeze({ min: 1, max: 10, fallback: 2 }),
+    gifMax:       Object.freeze({ min: 0, max: 10, fallback: 2 }),
+    stickerMax:   Object.freeze({ min: 0, max: 10, fallback: 1 }),
+    memeMax:      Object.freeze({ min: 0, max: 5,  fallback: 1 }),
     soundVolume:  Object.freeze({ min: 0, max: 100, fallback: 30 }),
 });
 

@@ -281,6 +281,7 @@ const _mediaAlt = (type, request) => {
  * @param {Array<object>} messages parser output (mutated in place)
  * @param {{ provider?: string, giphyKey?: string,
  *           rating?: string, stickersEnabled?: boolean, memeEnabled?: boolean,
+ *           gifMax?: number, stickerMax?: number, memeMax?: number,
  *           signal?: AbortSignal }} opts
  * @returns {Promise<number>} how many messages got media attached
  */
@@ -288,6 +289,17 @@ export async function resolveCommentMedia(messages, opts = {}) {
     if (!Array.isArray(messages) || messages.length === 0) return 0;
     const signal = opts.signal ?? null;
     const rating = ['off', 'low', 'medium', 'high'].includes(opts.rating) ? opts.rating : 'medium';
+
+    // Per-type caps: the prompt ASKS for discipline, the counters here
+    // GUARANTEE it — both the API calls and the attachments. A type at cap
+    // is skipped before any search, so an over-generous model can't burn
+    // the giphy quota on requests that would be dropped anyway.
+    const caps = {
+        gif: Number.isFinite(opts.gifMax) ? Math.max(0, opts.gifMax) : Infinity,
+        sticker: Number.isFinite(opts.stickerMax) ? Math.max(0, opts.stickerMax) : Infinity,
+        meme: Number.isFinite(opts.memeMax) ? Math.max(0, opts.memeMax) : Infinity,
+    };
+    const counts = { gif: 0, sticker: 0, meme: 0 };
 
     let provider = opts.provider === 'giphy' ? opts.provider : '';
     const apiKey = String(opts.giphyKey ?? '');
@@ -316,6 +328,8 @@ export async function resolveCommentMedia(messages, opts = {}) {
             || (request.type === 'sticker' && stickersEnabled)
             || (request.type === 'meme' && memeEnabled);
         if (!usable) continue;
+        if (counts[request.type] >= caps[request.type]) continue;
+        counts[request.type]++;
 
         const cacheKey = request.type === 'meme'
             ? `meme:${request.spec?.template ?? ''}|${request.spec?.top ?? ''}|${request.spec?.bottom ?? ''}`

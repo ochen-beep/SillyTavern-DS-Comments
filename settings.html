@@ -178,12 +178,24 @@
                             <option value="high" data-i18n="dscomments.settings.mediaRatingHigh">High</option>
                         </select>
                         <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_stickers" class="checkbox"> <span data-i18n="dscomments.settings.mediaStickers">Stickers (transparent)</span></label>
+                        <div class="dsc_field_group dsc_field_num">
+                            <span class="dsc_field_label"><span data-i18n="dscomments.settings.gifMax">GIFs per generation</span></span>
+                            <input type="number" id="dsc_gif_max" class="dsc_input dsc_input_num" min="0" max="10" value="2">
+                        </div>
+                        <div class="dsc_field_group dsc_field_num">
+                            <span class="dsc_field_label"><span data-i18n="dscomments.settings.stickerMax">Stickers per generation</span></span>
+                            <input type="number" id="dsc_sticker_max" class="dsc_input dsc_input_num" min="0" max="10" value="1">
+                        </div>
                         <span class="dsc_field_label" id="dsc_media_giphy_key_label" data-i18n="dscomments.settings.mediaGiphyKey">Giphy API key</span>
                         <input type="password" id="dsc_media_giphy_key" class="dsc_input" placeholder="dc6za..." autocomplete="off">
                     </div>
                 </div>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_memes" class="checkbox"> <span><span data-i18n="dscomments.settings.mediaMemes">Memes (memegen.link)</span>
                     <small class="dsc_hint" data-i18n="dscomments.settings.mediaMemesHint">Commenters can compose their own memes on well-known templates. No API key needed.</small></span></label>
+                <div class="dsc_field_group dsc_field_num" id="dsc_meme_max_group" hidden>
+                    <span class="dsc_field_label"><span data-i18n="dscomments.settings.memeMax">Memes per generation</span></span>
+                    <input type="number" id="dsc_meme_max" class="dsc_input dsc_input_num" min="0" max="5" value="1">
+                </div>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_reaction_emotes" class="checkbox"> <span><span data-i18n="dscomments.settings.reactionEmotes">Reaction emotes (meme pack)</span>
                     <small class="dsc_hint" data-i18n="dscomments.settings.reactionEmotesHint">Reactions can use Twitch/Discord-style meme emotes instead of plain emoji. Ships with a built-in pack; optionally add a 7TV emote-set id for more.</small></span></label>
                 <input type="text" id="dsc_emote_set_id" class="dsc_input" data-i18n="[placeholder]dscomments.settings.emoteSetIdPh" placeholder="7TV emote-set id (optional)" autocomplete="off" spellcheck="false">

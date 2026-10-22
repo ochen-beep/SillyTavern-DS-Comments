@@ -355,7 +355,7 @@ function computeMediaHash(settings) {
         ? settings.mediaRating
         : 'medium';
     const setId = media.emotes ? String(settings.emoteSetId || '').trim() : '';
-    return hashFingerprint(`media:${media.provider}|${media.sticker}|${media.meme}|${media.emotes}|${setId}|${rating}`);
+    return hashFingerprint(`media:${media.provider}|${media.sticker}|${media.meme}|${media.emotes}|${setId}|${rating}|${settings.gifMax}|${settings.stickerMax}|${settings.memeMax}`);
 }
 
 function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwipeIdx }) {
@@ -369,7 +369,13 @@ function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwi
     // taught code list, never breaks rendering.
     const emoteCodes = media.emotes ? getEmoteCodes() : null;
     const contract = (media.gif || media.sticker || media.meme || media.emotes)
-        ? buildContract({ ...media, emoteCodes })
+        ? buildContract({
+            ...media,
+            gifMax: settings.gifMax,
+            stickerMax: settings.stickerMax,
+            memeMax: settings.memeMax,
+            emoteCodes,
+        })
         : PROMPT_CONTRACT;
     const parts = {
         ...context,
@@ -557,6 +563,7 @@ function _fpSettingsKey(s) {
         // media to messages — both are generation inputs. Reaction emotes
         // change the taught code list and the rendered chips.
         s.mediaProvider, s.mediaStickers, s.mediaMemes,
+        s.gifMax, s.stickerMax, s.memeMax,
         s.reactionEmotes, s.emoteSetId,
         s.promptTemplate, s.enableJailbreakBlock,
         s.jailbreakRole, s.jailbreakText,
@@ -921,6 +928,9 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
                     rating: settings.mediaRating,
                     stickersEnabled: media.sticker,
                     memeEnabled: media.meme,
+                    gifMax: settings.gifMax,
+                    stickerMax: settings.stickerMax,
+                    memeMax: settings.memeMax,
                     signal,
                 });
                 if (attached) {
