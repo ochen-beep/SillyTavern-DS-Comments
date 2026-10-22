@@ -643,6 +643,16 @@ export async function collectRuntimeInfo() {
                 promptTemplate: state.settings.promptTemplate,
                 enableJailbreakBlock: state.settings.enableJailbreakBlock,
                 debugMode: state.settings.debugMode,
+                // media features shape the contract and the media phase — a dump
+                // without them can't explain "no GIFs attached" reports
+                mediaProvider: state.settings.mediaProvider,
+                mediaRating: state.settings.mediaRating,
+                mediaStickers: state.settings.mediaStickers,
+                mediaMemes: state.settings.mediaMemes,
+                gifMax: state.settings.gifMax,
+                stickerMax: state.settings.stickerMax,
+                memeMax: state.settings.memeMax,
+                reactionEmotes: state.settings.reactionEmotes,
             };
             // CM readiness for the mobile-loss hypothesis: the verified getContext()
             // has no connectionManagerAvailable / getRunContext members, so derive the
