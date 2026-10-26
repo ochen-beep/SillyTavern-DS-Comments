@@ -1,22 +1,22 @@
 {
-    "display_name": "DS Comments",
-    "loading_order": 1,
-    "dependencies": [],
-    "js": "index.js",
-    "css": "style.css",
-    "author": "ochen-beep",
-    "version": "0.10.0",
-    "homePage": "https://github.com/ochen-beep/SillyTavern-DS-Comments",
-    "auto_update": false,
-    "minimum_client_version": "1.18.0",
-    "i18n": {
-        "ru-ru": "src/i18n/ru-ru.json"
-    },
-    "hooks": {
-        "update": "onUpdate",
-        "enable": "onEnable",
-        "disable": "onDisable",
-        "activate": "onActivate",
-        "clean": "onClean"
-    }
+  "display_name": "DS Comments",
+  "loading_order": 1,
+  "dependencies": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "ochen-beep",
+  "version": "0.11.0",
+  "homePage": "https://github.com/ochen-beep/SillyTavern-DS-Comments",
+  "auto_update": false,
+  "minimum_client_version": "1.18.0",
+  "i18n": {
+    "ru-ru": "src/i18n/ru-ru.json"
+  },
+  "hooks": {
+    "update": "onUpdate",
+    "enable": "onEnable",
+    "disable": "onDisable",
+    "activate": "onActivate",
+    "clean": "onClean"
+  }
 }
