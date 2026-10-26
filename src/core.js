@@ -820,6 +820,26 @@ export function flushGiphyKey() {
     return _persistGiphyKey.flush?.();
 }
 
+// ── Network helper: fetch with a hard timeout ──
+// External CDN/API hangs must never stall a generation phase until the
+// browser's own (~minutes) timeout. The hard timeout rejects with a plain
+// Error (callers treat it as "feature unavailable" and degrade), while an
+// external abort propagates its own reason (AbortError → cancelled
+// generation). Shared by emotes/media/images fetches.
+export async function fetchWithTimeout(url, { signal = null, timeoutMs = 8000, ...init } = {}) {
+    const ctrl = new AbortController();
+    const onExternalAbort = () => ctrl.abort(signal.reason);
+    if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
+    const timer = setTimeout(() => ctrl.abort(new Error(`fetch timed out after ${timeoutMs}ms`)), timeoutMs);
+    try {
+        return await fetch(url, { ...init, signal: ctrl.signal });
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onExternalAbort);
+    }
+}
+
 // ── Confirmation Modal (via ST context; native confirm as last-resort fallback) ──
 export async function showConfirmModal(message) {
     try {
@@ -883,17 +903,21 @@ export function aiPostIndices() {
     } catch { return []; }
 }
 
-export function resolveLastAIPost() {
+/** Last commentable post (chat-restore / implicit-generation fallback).
+ *  Generation-eligibility, not a hardcoded AI filter: with commentUserPosts
+ *  on, a trailing {{user}} post is a valid fallback target — the same
+ *  eligibility the navigation steppers and gestures use, so restore and
+ *  navigation can never disagree. */
+export function resolveLastCommentablePost() {
     try {
         const ctx = getCtx();
         const chat = ctx.chat;
         if (!chat || !chat.length) return null;
         for (let i = chat.length - 1; i >= 0; i--) {
-            const msg = chat[i];
-            if (msg && !msg.is_user && !msg.is_system && !msg.is_hidden) {
+            if (isCommentaryGenerationEligible(chat[i])) {
                 return {
                     msgId: String(i),
-                    swipeIdx: typeof msg.swipe_id === 'number' ? msg.swipe_id : 0,
+                    swipeIdx: typeof chat[i].swipe_id === 'number' ? chat[i].swipe_id : 0,
                 };
             }
         }

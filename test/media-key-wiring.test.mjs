@@ -43,10 +43,10 @@ test('change handler: media key flush runs BEFORE the FIELD_MAP gate', () => {
     assert.ok(flush < gate, 'flushGiphyKey must precede the FIELD_MAP gate');
 });
 
-test('media key id is hidden by updateMediaVisibility, key synced from localforage', () => {
+test('media key id is synced from localforage; visibility rides the provider body', () => {
     const sync = readFileSync(path.join(root, 'src/ui/settings-sync.js'), 'utf8');
     assert.match(sync, /getElementById\('dsc_media_giphy_key'\)/);
     assert.match(sync, /getGiphyKey\(\)/);
-    // visibility: giphy key hidden unless provider === 'giphy'
-    assert.match(sync, /giphyKey\.hidden = provider !== 'giphy'/);
+    // visibility: the whole provider body (key input included) hides together
+    assert.match(sync, /body\.hidden = state\.settings\.mediaProvider !== 'giphy'/);
 });

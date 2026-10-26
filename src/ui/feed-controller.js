@@ -135,7 +135,7 @@ const _controller = createFeedController({
     getFeedElement: () => document.getElementById('dscFeed'),
 });
 
-export const showFeedHtml        = (html) => _controller.showHtml(html);
-export const showFeedEmpty       = () => _controller.showEmpty();
-export const showFeedGenerating  = () => _controller.showGenerating();
-export const showFeedDisabled    = () => _controller.showDisabled();
+export const showFeedHtml = (html) => _controller.showHtml(html);
+// Production-wiring seam: the empty-state CTA test drives the real instance
+// through this (generating/disabled states are covered via the factory).
+export const showFeedEmpty = () => _controller.showEmpty();

@@ -208,7 +208,7 @@ test('planPostImages: hash only when attaching; collect-independent of mode', ()
     assert.equal(off.attach, false);
     assert.equal(off.hash, '');
     const none = planPostImages(aiMsg('p'), 0, { includeImages: 'always' }, null);
-    assert.deepEqual(none, { images: [], attach: false, hash: '' });
+    assert.deepEqual(none, { images: [], attach: false, hash: '', reason: '' });
 });
 
 // ── inline <img> tags in the message text (sillyimages-style embeds) ──

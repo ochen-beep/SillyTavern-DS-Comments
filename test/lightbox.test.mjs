@@ -6,7 +6,7 @@
 import '../test-helpers/stub-runtime.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openMediaLightbox, closeMediaLightbox } from '../src/ui/lightbox.js';
+import { openMediaLightbox } from '../src/ui/lightbox.js';
 
 const findDialog = () => globalThis.document.body.children.find(d => d.id === 'dsc_lightbox');
 
@@ -46,6 +46,6 @@ test('lightbox: click closes; pinch-in closes; small two-finger drift does not',
     dlg._listeners.touchstart({ touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] });
     dlg._listeners.touchmove({ touches: [{ clientX: 0, clientY: 0 }, { clientX: 95, clientY: 0 }] });
     assert.equal(dlg.open, true);
-    closeMediaLightbox();
+    dlg._listeners.click();
     assert.equal(dlg.open, false);
 });

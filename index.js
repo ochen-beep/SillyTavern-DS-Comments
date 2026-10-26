@@ -8,7 +8,7 @@ import {
     state, MODULE_NAME, DISPLAY_NAME, META_KEY, LF_PROMPTS, LF_API_KEY, LF_SOUND, LF_PINNED, LF_EVENTLOG,
     defaultSettings, FOLDER_NAME,
     loadSettings, saveSettings, flushSettings, getCtx, log, trace, warn, error, tr,
-    setApiKey, flushApiKey, setGiphyKey, flushGiphyKey, showConfirmModal, showInputModal, debounce, bumpGenerationEpoch,
+    setApiKey, flushApiKey, setGiphyKey, getGiphyKey, flushGiphyKey, showConfirmModal, showInputModal, debounce, bumpGenerationEpoch,
     observePersistence, dumpRestoreLog, clearRestoreLog, collectRuntimeInfo,
     dumpDebugLog, clearDebugLog,
 } from './src/core.js';
@@ -45,6 +45,7 @@ import {
 import { createLorebookPicker } from './src/ui/lorebook-picker.js';
 import { getChatLoreConfig, saveChatLoreConfig } from './src/lorebooks.js';
 import { refreshEmoteManifest } from './src/emotes.js';
+import { probeGiphy } from './src/media.js';
 import { lastCustomEndpointDebug } from './src/connection.js';
 import {
     toggleTypographyPopover, closeTypographyPopover, isTypographyOpen,
@@ -523,7 +524,7 @@ function bindSettingsPanelEvents() {
     if (!root) return;
 
     // Section accordion toggles
-    root.addEventListener('click', (e) => {
+    root.addEventListener('click', async (e) => {
         const header = e.target.closest('.dsc_section_header');
         if (header) {
             e.stopPropagation();
@@ -552,6 +553,22 @@ function bindSettingsPanelEvents() {
         if (e.target.closest('#dsc_template_reset'))  { handleTemplateReset(); return; }
         if (e.target.closest('#dsc_template_del'))    { handleTemplateDel(); return; }
         if (e.target.closest('#dsc_sound_test')) { playNotificationSound(); return; }
+        // Giphy key probe: validates the CURRENTLY PERSISTED key (the debounced
+        // localforage write may lag the input by up to 400 ms).
+        if (e.target.closest('#dsc_giphy_test')) {
+            const key = await getGiphyKey();
+            const result = await probeGiphy({ apiKey: key, rating: state.settings.mediaRating });
+            if (result.ok) {
+                toastr?.success(tr('Giphy key works.', 'dscomments.media.keyTestOk'), DISPLAY_NAME);
+            } else if (result.reason === 'no_key') {
+                toastr?.warning(tr('Enter an API key first.', 'dscomments.media.keyTestNoKey'), DISPLAY_NAME);
+            } else if (result.reason === 'network') {
+                toastr?.error(tr('Giphy is unreachable (network error).', 'dscomments.media.keyTestNetwork'), DISPLAY_NAME);
+            } else {
+                toastr?.error(tr('Giphy rejected the key (HTTP {status}).', 'dscomments.media.keyTestBad').replace('{status}', result.status ?? '?'), DISPLAY_NAME);
+            }
+            return;
+        }
         // Danger zone: clear feed + all cached commentary.
         if (e.target.closest('#dsc_clear_all')) { handleClearAll(); return; }
         // Debug: export captured restore/feed-loss log as a downloadable .json.
@@ -626,6 +643,8 @@ function bindSettingsPanelEvents() {
         if (el.id === 'dsc_pastcom') syncSettingsSections();
         if (el.id === 'dsc_userposts') syncSettingsSections();
         if (el.id === 'dsc_jb_enable') syncSettingsSections();
+        // reaction emotes: the 7TV set-id field rides this toggle
+        if (el.id === 'dsc_reaction_emotes') syncSettingsSections();
         if (el.id === 'dsc_sound_enable') {
             document.getElementById('dsc_sound_body').hidden = !el.checked;
             const volume = document.getElementById('dsc_sound_volume');

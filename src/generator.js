@@ -8,7 +8,7 @@
  * source block as its own user message (see assemblePrompt).
  */
 
-import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastAIPost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag, getGiphyKey } from './core.js';
+import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastCommentablePost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag, getGiphyKey, notifyUser } from './core.js';
 import { refreshEmoteManifest, getEmoteCodes } from './emotes.js';
 import { planPostImages, loadImageParts } from './images.js';
 import { PROMPT_CONTRACT, buildContract } from './prompt-contract.js';
@@ -341,15 +341,40 @@ function mediaFeatures(settings) {
 }
 
 /**
+ * mediaFeatures resolved against provider reality: when the Giphy provider is
+ * selected but its API key is empty, gif/sticker are forced OFF — teaching
+ * the model to request GIFs the resolver must drop leaves "[gif: ...]"
+ * brackets in the feed. Async (reads the localforage key); callers compute it
+ * ONCE per generation so the contract, the mediaHash and the resolve phase
+ * can never disagree. The user notice fires once per session (actionable:
+ * the fix is pasting a key in settings).
+ */
+let _giphyKeyNoticeShown = false;
+async function resolveMediaFeatures(settings) {
+    const media = mediaFeatures(settings);
+    if (media.provider && !(await getGiphyKey())) {
+        if (!_giphyKeyNoticeShown) {
+            _giphyKeyNoticeShown = true;
+            notifyUser('warning',
+                tr('Giphy is selected but its API key is empty — comments stay text-only until you add one in settings.', 'dscomments.media.keyMissing'),
+                'giphy-key-missing');
+        }
+        return { ...media, provider: '', gif: false, sticker: false };
+    }
+    return media;
+}
+
+/**
  * Identity of the media settings shape, feeding the conditional mediaHash fp
  * field. Empty when every media feature is off, so legacy fingerprints stay
  * byte-identical (same discipline as imagesHash). Rating participates: it
  * reaches both provider requests and, transitively, what gets attached.
  * Reaction emotes change the contract text (pack codes) and the rendered
  * reactions, so the flag and the set id participate too.
+ * @param {object} settings state.settings
+ * @param {{gif: boolean, sticker: boolean, meme: boolean, emotes: boolean}} media key-aware resolved features
  */
-function computeMediaHash(settings) {
-    const media = mediaFeatures(settings);
+function computeMediaHash(settings, media) {
     if (!media.gif && !media.sticker && !media.meme && !media.emotes) return '';
     const rating = ['off', 'low', 'medium', 'high'].includes(settings.mediaRating)
         ? settings.mediaRating
@@ -358,12 +383,11 @@ function computeMediaHash(settings) {
     return hashFingerprint(`media:${media.provider}|${media.sticker}|${media.meme}|${media.emotes}|${setId}|${rating}|${settings.gifMax}|${settings.stickerMax}|${settings.memeMax}`);
 }
 
-function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwipeIdx }) {
+function assembleCompletePrompt({ ctx, stylePrompt, lore, anchorMsgId, anchorSwipeIdx, media }) {
     const settings = state.settings;
     const context = buildContextParts(ctx, lore);
     const history = buildChatHistoryParts(anchorMsgId, anchorSwipeIdx, ctx);
     const pastComments = buildPastCommentParts(anchorMsgId);
-    const media = mediaFeatures(settings);
     // The manifest cache is refreshed before render (generateFeed); the codes
     // here ride the same cache — a stale-but-populated cache only shifts the
     // taught code list, never breaks rendering.
@@ -534,7 +558,9 @@ export async function getCurrentGenerationFingerprint(ctx = getCtx(), anchorMsgI
         api: input.profileApi,
         model: input.profileModel,
     }).hash;
-    input.mediaHash = computeMediaHash(settings);
+    // Key-aware media features — the same resolution generateFeed uses, so
+    // the precheck fingerprint and the stored one can never disagree.
+    input.mediaHash = computeMediaHash(settings, await resolveMediaFeatures(settings));
     const fp = buildGenerationFingerprint(input);
     const diag = getLastFpDiag();
     _fpCacheKey = cacheKey;
@@ -561,10 +587,15 @@ function _fpSettingsKey(s) {
         s.includeImages,
         // Media features change the contract text (prompt) and may append
         // media to messages — both are generation inputs. Reaction emotes
-        // change the taught code list and the rendered chips.
-        s.mediaProvider, s.mediaStickers, s.mediaMemes,
+        // change the taught code list and the rendered chips. Rating reaches
+        // the provider requests (what gets attached).
+        s.mediaProvider, s.mediaStickers, s.mediaMemes, s.mediaRating,
         s.gifMax, s.stickerMax, s.memeMax,
         s.reactionEmotes, s.emoteSetId,
+        // Structured output changes the actual request (the schema replaces
+        // the assistant-role jailbreak prefill) — a feed generated under it
+        // must not be served from a pre-schema cache entry.
+        s.structuredOutput,
         s.promptTemplate, s.enableJailbreakBlock,
         s.jailbreakRole, s.jailbreakText,
     ].join('|');
@@ -603,7 +634,7 @@ function resolveImplicitGenerationTarget(forceRegenerate, ctx) {
         swipeIdx: state.currentSwipeIdx,
     }, ctx);
     if (current) return { ...current, source: 'currentPost' };
-    const last = resolveLastAIPost();
+    const last = resolveLastCommentablePost();
     return last ? { ...last, source: 'lastAI' } : null;
 }
 
@@ -707,10 +738,14 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
 
     try {
         const phaseStartedAt = performance.now();
+        // Media features resolved ONCE (key-aware) — the contract text, the
+        // mediaHash and the post-parse resolve phase all consume this snapshot,
+        // so they can never disagree about whether GIFs/stickers are in play.
+        const media = await resolveMediaFeatures(settings);
         // Reaction emotes: the manifest must exist BEFORE the prompt is built —
         // the contract teaches the live code list. The cache makes every later
         // touch (init warmup) a no-op; a dead CDN degrades to text reactions.
-        if (mediaFeatures(settings).emotes) {
+        if (media.emotes) {
             try {
                 await refreshEmoteManifest(signal);
             } catch (e) {
@@ -753,8 +788,14 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             api: generationInput.profileApi,
             model: generationInput.profileModel,
         });
+        // Images present but not attached: one diagnostics line explains why
+        // (the 'off' default is deliberate and stays silent — the confusing
+        // cases are auto/always silently not attaching).
+        if (imagePlan.images.length && !imagePlan.attach && settings.includeImages !== 'off') {
+            recordEvent('log', `event=images_plan images=${imagePlan.images.length} attach=0 reason=${imagePlan.reason || 'unknown'}`);
+        }
         generationInput.imagesHash = imagePlan.hash;
-        generationInput.mediaHash = computeMediaHash(settings);
+        generationInput.mediaHash = computeMediaHash(settings, media);
         markPhase('fingerprint', fingerprintStartedAt);
         if (!isEpochCurrent(epoch)) {
             trace('generateFeed: discarding stale result (epoch changed during fingerprint input resolution)');
@@ -828,6 +869,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
             lore,
             anchorMsgId: resolvedMsgId,
             anchorSwipeIdx: resolvedSwipeIdx,
+            media,
         });
         markPhase('prompt', promptStartedAt);
         if (!isEpochCurrent(epoch)) {
@@ -846,7 +888,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         let imagesAttached = 0;
         if (imagePlan.attach && imagePlan.images.length) {
             const imagesStartedAt = performance.now();
-            const imageParts = await loadImageParts(imagePlan.images);
+            const imageParts = await loadImageParts(imagePlan.images, signal);
             markPhase('images', imagesStartedAt);
             if (!isEpochCurrent(epoch)) {
                 trace('generateFeed: discarding stale result (epoch changed during image load)');
@@ -918,11 +960,12 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         // storeFeed persists the mutated message array. Abort propagates (the
         // catch below shows 'cancelled'); any other failure leaves the feed
         // text-only, which is why the epoch check below still applies.
+        // resolveCommentMedia writes its own `event=media_resolve` diagnostics
+        // line (attached/skip/fail/miss counters).
         const mediaStartedAt = performance.now();
         try {
-            const media = mediaFeatures(settings);
             if (media.gif || media.sticker || media.meme) {
-                const attached = await resolveCommentMedia(messages, {
+                await resolveCommentMedia(messages, {
                     provider: media.provider,
                     giphyKey: await getGiphyKey(),
                     rating: settings.mediaRating,
@@ -933,9 +976,6 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
                     memeMax: settings.memeMax,
                     signal,
                 });
-                if (attached) {
-                    recordEvent('log', `event=generation_media target=#${resolvedMsgId}[${resolvedSwipeIdx}] attached=${attached}`);
-                }
             }
         } catch (e) {
             if (e?.name === 'AbortError') throw e;

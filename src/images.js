@@ -12,7 +12,7 @@
  * carries images; with no images the prompt stays byte-identical (content
  * remains a plain string, the fingerprint gains no new fields).
  */
-import { getCtx, trace, warn } from './core.js';
+import { getCtx, trace, warn, fetchWithTimeout } from './core.js';
 import { hashFingerprint } from './lorebooks.js';   // FNV — same hash the generation fingerprint uses
 
 export const MAX_IMAGES_PER_POST = 4;
@@ -140,12 +140,24 @@ export function collectInlineImageUrls(rawText) {
 }
 
 /**
+ * Why shouldAttachImages said no — for the diagnostic event log only.
+ */
+function attachSkipReason(settings, profile) {
+    const mode = String(settings?.includeImages ?? 'off');
+    if (mode === 'off') return 'off';
+    if (settings?.apiSource === 'profile' && !isChatCompletionProfileApi(profile?.api)) {
+        return 'api_not_chat_completions';
+    }
+    return 'auto_not_vision_model';
+}
+
+/**
  * Resolve the image plan for a generation: which images the anchor post
  * carries and whether to attach them. Synchronous and cheap — safe to call
  * for fingerprint computation on every render pre-check.
  * Sources: extra.media (native attachments) + inline <img> tags in the raw
  * swipe text (sillyimages-style embeds), deduped by URL, capped at the max.
- * @returns {{ images: {url:string,title:string}[], attach: boolean, hash: string }}
+ * @returns {{ images: {url:string,title:string}[], attach: boolean, hash: string, reason: string }}
  */
 export function planPostImages(msg, swipeIdx, settings, profile) {
     const images = collectPostImages(msg, swipeIdx);
@@ -159,12 +171,14 @@ export function planPostImages(msg, swipeIdx, settings, profile) {
         seen.add(url);
         images.push({ url, title: '' });
     }
-    if (!images.length) return { images: [], attach: false, hash: '' };
+    if (!images.length) return { images: [], attach: false, hash: '', reason: '' };
     const attach = shouldAttachImages(settings, profile);
+    if (!attach) return { images, attach: false, hash: '', reason: attachSkipReason(settings, profile) };
     return {
         images,
         attach,
-        hash: attach ? computeImagesHash(images) : '',
+        hash: computeImagesHash(images),
+        reason: '',
     };
 }
 
@@ -198,7 +212,7 @@ export async function downscaleDataUrl(dataUrl) {
         if (!w || !h) return dataUrl;
         const mime = dataUrl.slice(5, dataUrl.indexOf(';'));
         const keepPng = mime === 'image/png' || mime === 'image/gif';
-        if (w <= MAX_IMAGE_SIDE && h <= MAX_IMAGE_SIDE && (!keepPng ? mime === 'image/jpeg' : true)) {
+        if (w <= MAX_IMAGE_SIDE && h <= MAX_IMAGE_SIDE && (keepPng || mime === 'image/jpeg')) {
             return dataUrl;   // already within limits and well-encoded
         }
         const canvas = document.createElement('canvas');
@@ -220,15 +234,17 @@ export async function downscaleDataUrl(dataUrl) {
  * Load one attachment into an OpenAI image part. data URLs skip the network;
  * external URLs are fetched (same-origin /user/files/... is the common case;
  * CORS failures skip the image silently, mirroring ST's addImage behaviour).
- * detail is always 'low' — see core.js defaultSettings.
+ * The fetch carries the generation's abort signal AND a hard timeout — a
+ * hanging image host must not stall the images phase. detail is always
+ * 'low' — see core.js defaultSettings.
  * @returns {Promise<{type:'image_url', image_url:{url:string, detail:string}}|null>}
  */
-export async function loadImagePart(image) {
+export async function loadImagePart(image, signal = null) {
     try {
         let dataUrl = String(image?.url ?? '');
         if (!dataUrl) return null;
         if (!dataUrl.startsWith('data:')) {
-            const response = await fetch(dataUrl, { method: 'GET', cache: 'force-cache' });
+            const response = await fetchWithTimeout(dataUrl, { method: 'GET', cache: 'force-cache', signal });
             if (!response.ok) throw new Error(`fetch failed: ${response.status}`);
             dataUrl = await blobToDataUrl(await response.blob());
         }
@@ -244,8 +260,8 @@ export async function loadImagePart(image) {
  * Load all planned images, skipping failures. Never throws — a post whose
  * images all failed still gets a text-only generation.
  */
-export async function loadImageParts(images) {
-    const results = await Promise.allSettled(images.map(m => loadImagePart(m)));
+export async function loadImageParts(images, signal = null) {
+    const results = await Promise.allSettled(images.map(m => loadImagePart(m, signal)));
     const parts = results.map(r => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean);
     trace(`loadImageParts: ${parts.length}/${images.length} attached`);
     return parts;

@@ -13,7 +13,8 @@
  * stateless image URLs built from the resolved template id.
  */
 
-import { warn, trace } from './core.js';
+import { warn, trace, notifyUser, tr, fetchWithTimeout } from './core.js';
+import { recordEvent } from './event-log.js';
 
 const GIPHY_SEARCH_URL = 'https://api.giphy.com/v1/gifs/search';
 const GIPHY_STICKER_SEARCH_URL = 'https://api.giphy.com/v1/stickers/search';
@@ -86,10 +87,18 @@ async function fetchMemeTemplates(signal) {
     if (_memeTemplates && Date.now() - _memeTemplatesTs < MEME_TEMPLATES_TTL_MS) {
         return _memeTemplates;
     }
-    const response = await fetch(MEMEGEN_TEMPLATES_URL, { method: 'GET', signal });
-    if (!response.ok) throw new Error(`memegen templates: HTTP ${response.status}`);
+    const response = await fetchWithTimeout(MEMEGEN_TEMPLATES_URL, { method: 'GET', signal });
+    if (!response.ok) {
+        const err = new Error(`memegen templates: HTTP ${response.status}`);
+        err.diagnostic = 'templates_unavailable';
+        throw err;
+    }
     const list = await response.json();
-    if (!Array.isArray(list)) throw new Error('memegen templates: unexpected payload');
+    if (!Array.isArray(list)) {
+        const err = new Error('memegen templates: unexpected payload');
+        err.diagnostic = 'templates_unavailable';
+        throw err;
+    }
     _memeTemplates = list.filter(t => t && typeof t.id === 'string' && t.id);
     _memeTemplatesTs = Date.now();
     trace(`memegen templates cached: ${_memeTemplates.length}`);
@@ -163,14 +172,11 @@ export function resolveMemeTemplate(hint, templates) {
 }
 
 // Templates whose text zones deviate from "first line = top caption, last
-// line = bottom caption" (default layout). Maps template id → [topIdx,
-// bottomIdx] over the template's caption lines. Extended as layouts are
-// discovered; everything not listed uses the default.
-const MEME_TEXT_PLACEMENT = new Map([
-    // Daily Struggle ("two buttons"): both captions label the buttons — the
-    // joke IS the choice; the sweating-guy strip below stays unlabeled.
-    ['ds', [0, 1]],
-]);
+// line = bottom caption" (default layout). Daily Struggle ("two buttons") is
+// the one known case: both captions label the buttons — the joke IS the
+// choice; the sweating-guy strip below stays unlabeled. Everything else uses
+// the default placement.
+const DS_PLACEMENT = [0, 1];
 
 /**
  * Build the stateless memegen image URL for a resolved template.
@@ -185,7 +191,7 @@ export function buildMemeUrl(template, spec) {
     const bottom = encodeMemeText(spec?.bottom);
     const lines = Number.isInteger(template.lines) ? Math.max(1, Math.min(6, template.lines)) : 2;
     const segments = Array(lines).fill('');
-    const placement = MEME_TEXT_PLACEMENT.get(template.id);
+    const placement = template.id === 'ds' ? DS_PLACEMENT : null;
     if (lines === 1) {
         segments[0] = top;
     } else if (placement && placement[0] < lines && placement[1] < lines) {
@@ -225,8 +231,14 @@ async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
         const mapped = GIPHY_RATING[rating];
         if (mapped) params.set('rating', mapped);
         const endpoint = sticker ? GIPHY_STICKER_SEARCH_URL : GIPHY_SEARCH_URL;
-        const response = await fetch(`${endpoint}?${params}`, { method: 'GET', signal });
-        if (!response.ok) throw new Error(`giphy: HTTP ${response.status}`);
+        const response = await fetchWithTimeout(`${endpoint}?${params}`, { method: 'GET', signal });
+        if (!response.ok) {
+            // status rides the error so callers can tell an actionable failure
+            // (bad key 401/403, quota 429) from a transient one.
+            const err = new Error(`giphy: HTTP ${response.status}`);
+            err.status = response.status;
+            throw err;
+        }
         const payload = await response.json();
         const results = Array.isArray(payload?.data) ? payload.data : [];
         // Collect every usable candidate and take one at random — relevance order
@@ -253,6 +265,28 @@ async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
     return urls[Math.floor(Math.random() * urls.length)];
 }
 
+/**
+ * One-request key probe for the settings "Test" button: a fixed harmless
+ * query with the CURRENT key and rating. HTTP 200 means the key is valid;
+ * the status code is surfaced for every other outcome.
+ * @returns {Promise<{ok: boolean, reason?: 'no_key'|'http'|'network', status?: number}>}
+ */
+export async function probeGiphy({ apiKey, rating = 'medium' } = {}) {
+    const key = String(apiKey ?? '').trim();
+    if (!key) return { ok: false, reason: 'no_key' };
+    try {
+        const params = new URLSearchParams({ api_key: key, q: 'thumbs up', limit: '1' });
+        const mapped = GIPHY_RATING[rating];
+        if (mapped) params.set('rating', mapped);
+        const response = await fetchWithTimeout(`${GIPHY_SEARCH_URL}?${params}`);
+        return response.ok
+            ? { ok: true }
+            : { ok: false, reason: 'http', status: response.status };
+    } catch {
+        return { ok: false, reason: 'network' };
+    }
+}
+
 // ── Resolution entry point ──
 
 const _firstMediaRequest = (msg) => {
@@ -272,11 +306,23 @@ const _mediaAlt = (type, request) => {
     return request.query;
 };
 
+// Session-once user notifications for ACTIONABLE provider failures only —
+// a rejected key or an exhausted quota is something the user can fix. Search
+// misses and transient errors are normal operation and stay console-only.
+const _notifiedFailures = new Set();
+function notifyActionable(kind, i18nKey, english) {
+    if (_notifiedFailures.has(kind)) return;
+    _notifiedFailures.add(kind);
+    notifyUser('warning', tr(english, i18nKey), `giphy-${kind}`);
+}
+
 /**
  * Resolve every media request in a parsed commentary batch to an allow-listed
  * URL, setting `msg.media = { type, url, alt }`. Per-feed request cache: two
  * commenters searching the same query share one lookup. Never throws except
- * AbortError (a cancelled generation must surface as cancelled).
+ * AbortError (a cancelled generation must surface as cancelled). One
+ * `event=media_resolve` diagnostics line per pass (counts and statuses only —
+ * queries and captions may carry private scene text and are never logged).
  *
  * @param {Array<object>} messages parser output (mutated in place)
  * @param {{ provider?: string, giphyKey?: string,
@@ -300,6 +346,10 @@ export async function resolveCommentMedia(messages, opts = {}) {
         meme: Number.isFinite(opts.memeMax) ? Math.max(0, opts.memeMax) : Infinity,
     };
     const counts = { gif: 0, sticker: 0, meme: 0 };
+    // Diagnostics counters for the event-log summary.
+    const fails = { gif: 0, sticker: 0, meme: 0 };
+    const failReason = { gif: '', sticker: '', meme: '' };
+    const misses = { gif: 0, sticker: 0, meme: 0 };
 
     let provider = opts.provider === 'giphy' ? opts.provider : '';
     const apiKey = String(opts.giphyKey ?? '');
@@ -309,9 +359,11 @@ export async function resolveCommentMedia(messages, opts = {}) {
         warned = true;
         warn(msg, ...rest);
     };
+    let skippedNoKey = false;
     if (provider && !apiKey) {
         warnOnce(`resolveCommentMedia: ${provider} selected but its API key is empty — GIFs/stickers skipped`);
         provider = '';
+        skippedNoKey = true;
     }
     const stickersEnabled = !!provider && opts.stickersEnabled !== false;
     const memeEnabled = !!opts.memeEnabled;
@@ -340,7 +392,11 @@ export async function resolveCommentMedia(messages, opts = {}) {
                 if (request.type === 'meme') {
                     templates ??= await fetchMemeTemplates(signal);
                     const template = resolveMemeTemplate(request.spec?.template, templates);
-                    if (!template) throw new Error(`meme template not found: ${request.spec?.template}`);
+                    if (!template) {
+                        const err = new Error(`meme template not found: ${request.spec?.template}`);
+                        err.diagnostic = 'template_not_found';
+                        throw err;
+                    }
                     cache.set(cacheKey, buildMemeUrl(template, request.spec));
                 } else {
                     const url = await searchGiphy(request.query, { apiKey, rating, sticker: request.type === 'sticker', signal });
@@ -349,6 +405,16 @@ export async function resolveCommentMedia(messages, opts = {}) {
             } catch (e) {
                 if (e?.name === 'AbortError') throw e;
                 warnOnce(`resolveCommentMedia: ${request.type} "${request.type === 'meme' ? request.spec?.template : request.query}" failed — comment stays text-only`, e);
+                fails[request.type]++;
+                failReason[request.type] = e?.diagnostic
+                    ?? (Number.isInteger(e?.status) ? `http_${e.status}` : 'fetch');
+                if (e?.status === 401 || e?.status === 403) {
+                    notifyActionable('key-rejected', 'dscomments.media.keyRejected',
+                        'Giphy rejected the API key — check it in DS Comments settings.');
+                } else if (e?.status === 429) {
+                    notifyActionable('rate-limited', 'dscomments.media.rateLimited',
+                        'Giphy rate limit reached — GIFs are paused for a while.');
+                }
                 cache.set(cacheKey, null);
             }
         }
@@ -358,8 +424,17 @@ export async function resolveCommentMedia(messages, opts = {}) {
             msg.media = { type: request.type, url, alt: _mediaAlt(request.type, request) };
             resolved++;
         } else if (!url) {
+            misses[request.type]++;
             trace(`resolveCommentMedia: no result for ${request.type} request "${request.type === 'meme' ? request.spec?.template : request.query}"`);
         }
     }
+
+    const parts = [`attached=${resolved}`];
+    if (skippedNoKey) parts.push('skip=no_key');
+    for (const type of ['gif', 'sticker', 'meme']) {
+        if (misses[type]) parts.push(`${type}_miss=${misses[type]}`);
+        if (fails[type]) parts.push(`${type}_fail=${fails[type]}:${failReason[type] || 'fetch'}`);
+    }
+    recordEvent('log', `event=media_resolve ${parts.join(' ')}`);
     return resolved;
 }

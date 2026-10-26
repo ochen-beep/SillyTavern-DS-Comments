@@ -247,7 +247,7 @@ export function ensureFloatingLauncher({ onToggle } = {}) {
  * Refresh the active (panel-open) highlight. Called from ensureLauncher()
  * whenever launcher state changes.
  */
-export function syncFloatingLauncher() {
+function syncFloatingLauncher() {
     const icon = getFab();
     if (icon) icon.classList.toggle('dsc_fab_active', isPanelVisible());
 }

@@ -7,7 +7,7 @@
  * The scroll observer only RESTORES cache. requestAnimationFrame batches scroll.
  */
 
-import { state, getCtx, trace, warn, isCommentaryDisplayEligible, isCommentaryGenerationEligible, resolveLastAIPost, getMessageSwipeIdx, bumpGenerationEpoch, pushRestoreLog } from './core.js';
+import { state, getCtx, trace, warn, isCommentaryDisplayEligible, isCommentaryGenerationEligible, resolveLastCommentablePost, getMessageSwipeIdx, bumpGenerationEpoch, pushRestoreLog } from './core.js';
 import { recordEvent } from './event-log.js';
 import { isPanelVisible } from './ui/window.js';
 import { loadFeedStore, pruneOrphanedEntries, noteChatRenamed } from './feed-file-store.js';
@@ -487,6 +487,34 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         scheduleObserverRestart('chat', 600);
     }]);
 
+    // Shared render-trigger precheck: resolve the generation fingerprint
+    // (save mode only) for the cache-hit test, bailing out (null) when the
+    // chat or the generation epoch moved while awaiting it. Anchor-aware:
+    // with includePastComments on, the fp includes this post's past-thread
+    // set, matching what generateFeed will store — otherwise the pre-check
+    // could never cache-hit. A failed fingerprint lookup is a hard miss (an
+    // undefined fp is never passed into the legacy cache path, where it
+    // would accept stale HTML).
+    const fingerprintPrecheck = async (ctx2, msgIdStr) => {
+        const chatIdSnapshot = ctx2.chatId;
+        const epochSnapshot = state.generationEpoch;
+        let generationFp;
+        let fingerprintResolved = Boolean(getGenerationFingerprint);
+        if (!state.settings.noSaveMode && getGenerationFingerprint) {
+            try {
+                generationFp = await getGenerationFingerprint(ctx2, msgIdStr);
+            } catch (cause) {
+                fingerprintResolved = false;
+                warn('getGenerationFingerprint callback error:', cause);
+                recordEvent('error', `event=fingerprint callback=getGenerationFingerprint chat=${ctx2.chatId || 'none'} error=${cause?.message || cause}`);
+            }
+
+            const currentCtx = getCtx();
+            if (currentCtx.chatId !== chatIdSnapshot || state.generationEpoch !== epochSnapshot) return null;
+        }
+        return { generationFp, fingerprintResolved };
+    };
+
     // ── CHARACTER_MESSAGE_RENDERED: THE single trigger for generation ──
     handlers.push([ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
         if (!state.settings.enabled || !state.settings.autoUpdate) return;
@@ -517,31 +545,11 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         }
         state.pendingActivatedWorldInfo = null;
 
-        const chatIdSnapshot = ctx2.chatId;
-        const epochSnapshot = state.generationEpoch;
-        let generationFp;
-        let fingerprintResolved = Boolean(getGenerationFingerprint);
-        if (!state.settings.noSaveMode && getGenerationFingerprint) {
-            try {
-                // Anchor-aware: with includePastComments on, the fp includes
-                // this post's past-thread set, matching what generateFeed will
-                // store — otherwise the pre-check could never cache-hit.
-                generationFp = await getGenerationFingerprint(ctx2, msgIdStr);
-            } catch (cause) {
-                fingerprintResolved = false;
-                warn('getGenerationFingerprint callback error:', cause);
-                recordEvent('error', `event=fingerprint callback=getGenerationFingerprint chat=${ctx2.chatId || 'none'} error=${cause?.message || cause}`);
-            }
-
-            const currentCtx = getCtx();
-            if (currentCtx.chatId !== chatIdSnapshot || state.generationEpoch !== epochSnapshot) return;
-        }
-
-        // A failed fingerprint lookup is a hard miss. Never pass undefined from a
-        // rejection into the legacy cache path, where it would accept stale HTML.
+        const precheck = await fingerprintPrecheck(ctx2, msgIdStr);
+        if (!precheck) return;
         if (!state.settings.noSaveMode
-            && fingerprintResolved
-            && getCachedPost(msgIdStr, swipeIdx, generationFp)) return;
+            && precheck.fingerprintResolved
+            && getCachedPost(msgIdStr, swipeIdx, precheck.generationFp)) return;
 
         trace(`CHARACTER_MESSAGE_RENDERED #${msgIdStr}[${swipeIdx}]: generating (noSaveMode=${!!state.settings.noSaveMode})`);
         observeAsyncCallback(generateFeed(msgIdStr, swipeIdx, false), 'generateFeed');
@@ -565,29 +573,11 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
             const msgText = (msg.mes || '').trim();
             if (!msgText || msgText === '...' || msgText.length < 5) return;
 
-            // Same cache pre-check discipline as the character trigger: a
-            // failed fingerprint lookup is a hard miss, never an undefined fp
-            // passed into the legacy cache path.
-            const chatIdSnapshot = ctx2.chatId;
-            const epochSnapshot = state.generationEpoch;
-            let generationFp;
-            let fingerprintResolved = Boolean(getGenerationFingerprint);
-            if (!state.settings.noSaveMode && getGenerationFingerprint) {
-                try {
-                    generationFp = await getGenerationFingerprint(ctx2, msgIdStr);
-                } catch (cause) {
-                    fingerprintResolved = false;
-                    warn('getGenerationFingerprint callback error:', cause);
-                    recordEvent('error', `event=fingerprint callback=getGenerationFingerprint chat=${ctx2.chatId || 'none'} error=${cause?.message || cause}`);
-                }
-
-                const currentCtx = getCtx();
-                if (currentCtx.chatId !== chatIdSnapshot || state.generationEpoch !== epochSnapshot) return;
-            }
-
+            const precheck = await fingerprintPrecheck(ctx2, msgIdStr);
+            if (!precheck) return;
             if (!state.settings.noSaveMode
-                && fingerprintResolved
-                && getCachedPost(msgIdStr, swipeIdx, generationFp)) return;
+                && precheck.fingerprintResolved
+                && getCachedPost(msgIdStr, swipeIdx, precheck.generationFp)) return;
 
             trace(`USER_MESSAGE_RENDERED #${msgIdStr}[${swipeIdx}]: generating (noSaveMode=${!!state.settings.noSaveMode})`);
             observeAsyncCallback(generateFeed(msgIdStr, swipeIdx, false), 'generateFeed');
@@ -645,7 +635,7 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
                     || !chat[curIdx]
                     || !isCommentaryDisplayEligible(chat[curIdx]);
                 if (curGone) {
-                    const last = resolveLastAIPost();
+                    const last = resolveLastCommentablePost();
                     state.currentPostId = last?.msgId ?? null;
                     state.currentSwipeIdx = last?.swipeIdx ?? 0;
                     if (last) {

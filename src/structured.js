@@ -13,8 +13,10 @@
  * Not ported from recast's structured prefill: its newline-token/regex-prefix/
  * envelope machinery exists to fake a TEXT prefill — our constraint is a pure
  * object schema and needs none of it. Ported: the source-support table (which
- * ST backends map json_schema natively vs prompt-hack it) and the truncation
- * caveat (see structuredMaxTokens).
+ * ST backends map json_schema natively vs prompt-hack it). Truncation needs
+ * no special handling: a token-limit-cut envelope is closed and salvaged by
+ * parser.js's repair ladder, and no max_tokens override is sent — reasoning-
+ * family models (o-series, gpt-5) reject the parameter outright.
  */
 
 // chat_completion_source values (NOT profile.api keys — resolve via
@@ -155,15 +157,4 @@ export function buildCommentsSchema(variant = 'strict') {
         // OpenAI wire shape for our own custom-endpoint body.
         response_format: { type: 'json_schema', json_schema: { name: 'dscomments', schema: value, strict: variant === 'strict' } },
     };
-}
-
-/**
- * Structured output cannot be repair-parsed when truncated — an envelope cut
- * by the token limit is unrecoverable JSON, unlike the free-form array the
- * parser ladder salvages. Thinking models burn the budget on reasoning first.
- * Only used in structured mode; sized by the requested comment count.
- */
-export function structuredMaxTokens(userCount) {
-    const count = Number.isFinite(parseInt(userCount)) ? parseInt(userCount) : 5;
-    return Math.min(8000, 1000 + count * 200);
 }

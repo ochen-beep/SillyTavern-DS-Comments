@@ -347,7 +347,7 @@ test('generateWithProfile: structured mode requests raw response (extractData:fa
     assert.equal(calls.length, 1);
     assert.equal(calls[0].custom.extractData, false, 'raw response must be requested in structured mode');
     assert.ok(calls[0].override?.json_schema, 'json_schema override passed');
-    assert.ok(Number.isFinite(calls[0].maxTokens), 'structured max tokens passed');
+    assert.equal(calls[0].maxTokens, undefined, 'no max_tokens override (reasoning models reject it)');
     assert.ok(text.includes('"username":"a"'), 'prose-wrapped JSON preserved for the repair ladder');
     assert.ok(text.includes('Вот комментарии'), 'no lossy {} substitution');
 });

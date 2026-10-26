@@ -204,8 +204,16 @@
     "dscomments.settings.stickerMax": "Стикеров за генерацию",
     "dscomments.settings.memeMax": "Мемов за генерацию",
     "dscomments.settings.mediaGiphyKey": "API-ключ Giphy",
+    "dscomments.settings.mediaTestKey": "Проверить ключ",
     "dscomments.settings.mediaMemes": "Мемы (memegen.link)",
     "dscomments.settings.reactionEmotes": "Реакции-эмоуты (мемный пак)",
     "dscomments.settings.emoteSetIdPh": "ID сета 7TV (необязательно)",
-    "dscomments.media.keySaveError": "Не удалось сохранить API-ключ Giphy."
+    "dscomments.media.keySaveError": "Не удалось сохранить API-ключ Giphy.",
+    "dscomments.media.keyMissing": "Выбран Giphy, но API-ключ пуст — комментарии будут без гифок, пока ключ не добавлен в настройках.",
+    "dscomments.media.keyRejected": "Giphy отклонил API-ключ — проверьте его в настройках DS Comments.",
+    "dscomments.media.rateLimited": "Лимит запросов Giphy исчерпан — гифки на время приостановлены.",
+    "dscomments.media.keyTestOk": "Ключ Giphy работает.",
+    "dscomments.media.keyTestNoKey": "Сначала введите API-ключ.",
+    "dscomments.media.keyTestNetwork": "Giphy недоступен (сетевая ошибка).",
+    "dscomments.media.keyTestBad": "Giphy отклонил ключ (HTTP {status})."
 }

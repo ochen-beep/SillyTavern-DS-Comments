@@ -226,17 +226,12 @@ function updatePastCommentsVisibility() {
     if (el) el.hidden = !state.settings.includePastComments;
 }
 
-/** Provider-dependent media controls: body and the per-provider key field. */
+/** Provider-dependent media controls. The whole provider body (rating,
+ *  stickers, caps, API key) hides as one unit when no provider is selected —
+ *  the key input lives inside it, so no per-field gating is needed. */
 export function updateMediaVisibility() {
-    const provider = state.settings.mediaProvider === 'giphy' ? 'giphy' : '';
     const body = document.getElementById('dsc_media_provider_body');
-    if (body) body.hidden = !provider;
-    const stickers = document.getElementById('dsc_media_stickers');
-    if (stickers) stickers.disabled = !provider;
-    const giphyLabel = document.getElementById('dsc_media_giphy_key_label');
-    const giphyKey = document.getElementById('dsc_media_giphy_key');
-    if (giphyLabel) giphyLabel.hidden = provider !== 'giphy';
-    if (giphyKey) giphyKey.hidden = provider !== 'giphy';
+    if (body) body.hidden = state.settings.mediaProvider !== 'giphy';
     // reaction emotes: the 7TV set id only makes sense with the feature on
     const emoteSet = document.getElementById('dsc_emote_set_id');
     if (emoteSet) emoteSet.hidden = state.settings.reactionEmotes !== true;

@@ -63,36 +63,6 @@ function renderMediaFallback(msg) {
 }
 
 /**
- * Heal meme URLs persisted by older builds. Two generations of breakage:
- * 1. empty caption segments ('//', trailing '/.png') — memegen 301s them to
- *    the canonical '_'-filled form and DROPS THE QUERY on redirect, so the
- *    font param dies and the render target cold-caches for minutes;
- * 2. bare impact font silently dropping non-ASCII captions — if the decoded
- *    path carries non-ASCII text and no explicit font, append ?font=notosans.
- * Same host/path as the allowlist entry; only path filler and a query param
- * are added, so the security contract is untouched.
- */
-function repairMemeUrl(url) {
-    const PREFIX = 'https://api.memegen.link/images/';
-    if (!url.startsWith(PREFIX)) return url;
-    try {
-        const qIdx = url.indexOf('?');
-        const query = qIdx === -1 ? '' : url.slice(qIdx);
-        // Heal only the caption path — the scheme's own '//' must stay intact.
-        let tail = url.slice(PREFIX.length, qIdx === -1 ? undefined : qIdx);
-        tail = tail
-            .replace(/\/(?=\/)/g, '/_')                       // 'a//b'   → 'a/_/b'
-            .replace(/\/\.(png|jpe?g|webp|gif)$/i, '/_.$1');  // 'a/.png' → 'a/_.png'
-        let out = PREFIX + tail + query;
-        if (!/[?&]font=/.test(url) && /[^\x00-\x7F]/.test(decodeURIComponent(PREFIX + tail))) {
-            out += `${out.includes('?') ? '&' : '?'}font=notosans`;
-        }
-        return out;
-    } catch { /* malformed percent-encoding — keep the original URL */ }
-    return url;
-}
-
-/**
  * Replace every media placeholder under `root` with a real <img> element,
  * built via createElement (no HTML parsing of the URL). Called from the feed
  * controller after innerHTML assignment — this covers fresh renders, cache
@@ -139,14 +109,13 @@ export function upgradeMediaPlaceholders(root) {
                 node.setAttribute?.('data-dsc-media-dropped', '1');
                 continue;
             }
-            const url = repairMemeUrl(rawUrl);
             const img = document.createElement('img');
             img.className = `dsc_gif_img dsc_gif_${type}`;
             img.setAttribute('loading', 'lazy');
             img.setAttribute('decoding', 'async');
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
-            img.src = url;
+            img.src = rawUrl;
             img.addEventListener('error', () => trace(`media failed to load: ${url}`));
             node.textContent = '';
             node.appendChild?.(img);

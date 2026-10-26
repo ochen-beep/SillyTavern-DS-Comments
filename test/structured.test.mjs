@@ -9,7 +9,7 @@ import '../test-helpers/stub-runtime.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    schemaVariantForSource, structuredOutputFor, buildCommentsSchema, structuredMaxTokens,
+    schemaVariantForSource, structuredOutputFor, buildCommentsSchema,
 } from '../src/structured.js';
 import { parseCommentary } from '../src/parser.js';
 import { _testExtractTextFromResponse } from '../src/connection.js';
@@ -81,13 +81,6 @@ test('buildCommentsSchema: loose variant fits the Gemini responseSchema subset',
     const item = value.properties.comments.items;
     assert.deepEqual(item.required, ['username', 'content'], 'loose mode: optionals not required');
     assert.ok(!JSON.stringify(item).includes('anyOf'), 'no anyOf unions in loose mode');
-});
-
-test('structuredMaxTokens: scales with count, capped', () => {
-    assert.equal(structuredMaxTokens(5), 2000);
-    assert.equal(structuredMaxTokens(1), 1200);
-    assert.equal(structuredMaxTokens(50), 8000);
-    assert.equal(structuredMaxTokens('junk'), 2000, 'bad input falls back to count=5');
 });
 
 test('parseCommentary: unwraps the structured {comments:[...]} envelope', () => {

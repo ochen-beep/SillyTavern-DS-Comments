@@ -58,7 +58,6 @@ export function openMediaLightbox(src, alt = '') {
     if (!dlg.open) dlg.showModal?.();
 }
 
-export function closeMediaLightbox() {
+function closeMediaLightbox() {
     _dialog?.close?.();
-    if (_dialog) _dialog.open = false;
 }
