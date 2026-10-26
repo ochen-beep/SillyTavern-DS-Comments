@@ -18,7 +18,7 @@ import {
     defaultSettings, state, MODULE_NAME, NUMERIC_SETTINGS,
     hashHue, escapeHtml, extractText,
     isCommentaryDisplayEligible, isCommentaryGenerationEligible,
-    aiPostIndices, resolveLastAIPost, getMessageSwipeIdx,
+    aiPostIndices, resolveLastCommentablePost, getMessageSwipeIdx,
     buildPrompt, resolveSTMacro, loadSettings,
     notifyUser, observePersistence, persistSettingsNow, flushSettings, setApiKey, flushApiKey,
 } from '../src/core.js';
@@ -95,15 +95,26 @@ test('aiPostIndices: returns indices of display-eligible AI posts in order (hidd
     assert.deepEqual(aiPostIndices(), [1, 2, 3]);
 });
 
-test('resolveLastAIPost: last non-hidden AI post; swipe_id fallback 0; empty → null', () => {
+test('resolveLastCommentablePost: last non-hidden AI post; swipe_id fallback 0; empty → null', () => {
     globalThis._stCtx.chat = [user('u0'), ai('a1', 2), hiddenAi('h2')];
-    assert.deepEqual(resolveLastAIPost(), { msgId: '1', swipeIdx: 2 });
+    assert.deepEqual(resolveLastCommentablePost(), { msgId: '1', swipeIdx: 2 });
 
     globalThis._stCtx.chat = [{ is_user: false, is_system: false, is_hidden: false }]; // no swipe_id
-    assert.deepEqual(resolveLastAIPost(), { msgId: '0', swipeIdx: 0 });
+    assert.deepEqual(resolveLastCommentablePost(), { msgId: '0', swipeIdx: 0 });
 
     globalThis._stCtx.chat = [];
-    assert.equal(resolveLastAIPost(), null);
+    assert.equal(resolveLastCommentablePost(), null);
+});
+
+test('resolveLastCommentablePost: {{user}} posts join as fallback only with commentUserPosts', () => {
+    const chat = [ai('a0'), user('u1')];
+    state.settings.commentUserPosts = false;
+    globalThis._stCtx.chat = chat;
+    assert.deepEqual(resolveLastCommentablePost(), { msgId: '0', swipeIdx: 0 }, 'feature off → last AI post');
+
+    state.settings.commentUserPosts = true;
+    assert.deepEqual(resolveLastCommentablePost(), { msgId: '1', swipeIdx: 0 }, 'feature on → the trailing user post');
+    state.settings.commentUserPosts = false;
 });
 
 test('getMessageSwipeIdx: returns swipe_id or 0 fallback', () => {

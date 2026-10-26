@@ -17,16 +17,33 @@
 function makeEl() {
     return {
         _html: '',
+        _attrs: {},
         set innerHTML(v) { this._html = String(v ?? ''); },
         get innerHTML() { return this._html; },
         // innerText/textContent of a live DOM strip tags; repeat without layout.
         get innerText() { return this._html.replace(/<[^>]+>/g, ''); },
         get textContent() { return this._html.replace(/<[^>]+>/g, ''); },
+        set textContent(v) { this._html = String(v ?? ''); },
+        setAttribute(k, v) { this._attrs[k] = String(v); },
+        getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; },
+        appendChild(child) { (this.children ??= []).push(child); },
+        classList: { add() {}, },
+        className: '',
+        alt: '',
+        src: '',
+        remove() {},
+        // dialog/<el> semantics the lightbox test drives; last listener wins,
+        // which is all the single-handler wiring under test needs.
+        open: false,
+        addEventListener(type, fn) { (this._listeners ??= {})[type] = fn; },
+        showModal() { this.open = true; },
+        close() { this.open = false; },
     };
 }
 globalThis.document = {
     createElement: () => makeEl(),
     getElementById: () => null,
+    body: makeEl(),
 };
 
 // ── window shim ──

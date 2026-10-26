@@ -20,6 +20,10 @@ export const META_KEY = 'dscomments_commentary';
 // localforage key prefixes (prompt templates, api key, sound blobs).
 export const LF_PROMPTS = 'DSComments_prompts';
 export const LF_API_KEY = 'DSComments_apiKey';
+// localforage key for the comment-media provider API key (Giphy) — the
+// same out-of-settings treatment as LF_API_KEY: secrets never enter the
+// server-synced settings JSON.
+export const LF_GIPHY_KEY = 'DSComments_giphyKey';
 export const LF_SOUND = 'DSComments_sound_';
 // localforage key for the noSave pinned-feeds store (one record, Object chatId->feed).
 export const LF_PINNED = 'DSComments_pinned';
@@ -37,6 +41,12 @@ export const defaultSettings = Object.freeze({
     collapsed: false,                 // panel open (false) / collapsed to launcher (true)
     autoUpdate: true,                 // regenerate commentary on AI message
     noSaveMode: false,                // don't persist commentary to chat metadata
+
+    // {{user}} posts: master switch makes user messages commentable (display,
+    // restore, navigation, manual generation); the auto toggle additionally
+    // generates on USER_MESSAGE_RENDERED. Default off: pre-feature behaviour.
+    commentUserPosts: false,
+    autoUpdateUserPosts: false,
 
     // generation source: 'profile' (Connection Manager) | 'custom' (user endpoint).
     apiSource: 'profile',
@@ -63,7 +73,45 @@ export const defaultSettings = Object.freeze({
     includePastComments: false,
     pastCommentsDepth: 2,             // how many past posts' threads to include (max)
 
-    // prompt template: builtin 'main' (chat-styles/main.md — vibe) + user copies.
+    // multimodality: attach the anchor post's images to the prompt.
+    // 'off' (default — prompt and fingerprint stay byte-identical), 'auto'
+    // (only when the source model looks vision-capable), 'always'.
+    includeImages: 'off',
+    // detail is fixed 'low' (~85 tokens/image): commenters react to what is
+    // shown, not reading fine print. Downscaling still applies under the hood.
+
+    // structured output (json_schema): enforce the commentary contract at the
+    // transport level — the provider must return {"comments": [...]}. 'off'
+    // (default), 'auto' (sources known to enforce json_schema natively),
+    // 'always' (also unknown custom endpoints). Never sent to sources whose
+    // server mapping prompt-hacks the schema (claude/deepseek/zai/...).
+    structuredOutput: 'off',
+
+    // comment media attachments (AI commenters react with GIFs/stickers/memes).
+    // mediaProvider: GIF/sticker search backend — 'off' (default: prompt and
+    // fingerprint stay byte-identical) or 'giphy'. mediaRating is the
+    // coarse content filter ('off' = unfiltered). mediaStickers adds the
+    // transparent-sticker search; mediaMemes lets commenters
+    // compose their own memes via memegen.link (keyless).
+    mediaProvider: 'off',
+    mediaRating: 'medium',
+    mediaStickers: true,
+    mediaMemes: false,
+    // Per-type caps taught to the contract and enforced by the resolver.
+    // 0 = the type's section leaves the prompt entirely. gif/sticker caps
+    // share the giphy quota (100 req/h on beta keys); memes are keyless.
+    gifMax: 2,
+    stickerMax: 1,
+    memeMax: 1,
+
+    // reaction emotes: Twitch/Discord-style picture reactions. The model emits
+    // :codes: in the reactions' emoji field; they are mapped to images through
+    // a whitelist manifest (builtin pack + optional 7TV emote-set) — the model
+    // never supplies URLs, unknown codes degrade to plain text.
+    reactionEmotes: false,
+    emoteSetId: '',
+
+    // prompt template: builtins in chat-styles/*.md ('main', 'test' — vibe) + user copies.
     // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
     promptTemplate: 'main',
     promptTemplates: {},              // { name: text } — server-synced extension settings (was browser-local localforage)
@@ -120,6 +168,12 @@ export const state = {
     pinnedFeeds: new Map(),
     navLockUntil: 0,
     qsMenuOpen: false,
+    // One-slot coalescing queue for generateFeed: a render event arriving while
+    // another generation is in flight is parked here (latest wins) and drained
+    // by the running generation's finally. Dropped on chat change. Without it
+    // an AI reply rendering during a {{user}}-post generation would be skipped
+    // entirely (generateFeed returns early when generationInProgress).
+    queuedGeneration: null,
 };
 
 // ── ST Context Helper ──
@@ -338,6 +392,9 @@ export const NUMERIC_SETTINGS = Object.freeze({
     fontSize:     Object.freeze({ min: 8, max: 32, fallback: 15 }),
     contextDepth: Object.freeze({ min: 2, max: 50, fallback: 4 }),
     pastCommentsDepth: Object.freeze({ min: 1, max: 10, fallback: 2 }),
+    gifMax:       Object.freeze({ min: 0, max: 10, fallback: 2 }),
+    stickerMax:   Object.freeze({ min: 0, max: 10, fallback: 1 }),
+    memeMax:      Object.freeze({ min: 0, max: 5,  fallback: 1 }),
     soundVolume:  Object.freeze({ min: 0, max: 100, fallback: 30 }),
 });
 
@@ -399,6 +456,22 @@ export async function loadSettings() {
     if (!['bar', 'floating', 'both'].includes(state.settings.launcherMode)) {
         state.settings.launcherMode = defaultSettings.launcherMode;
     }
+    if (!['off', 'auto', 'always'].includes(state.settings.includeImages)) {
+        state.settings.includeImages = defaultSettings.includeImages;
+    }
+    if (!['off', 'auto', 'always'].includes(state.settings.structuredOutput)) {
+        state.settings.structuredOutput = defaultSettings.structuredOutput;
+    }
+    if (!['off', 'giphy'].includes(state.settings.mediaProvider)) {
+        state.settings.mediaProvider = defaultSettings.mediaProvider;
+    }
+    if (!['off', 'low', 'medium', 'high'].includes(state.settings.mediaRating)) {
+        state.settings.mediaRating = defaultSettings.mediaRating;
+    }
+    state.settings.mediaStickers = state.settings.mediaStickers !== false;
+    state.settings.mediaMemes = state.settings.mediaMemes === true;
+    state.settings.reactionEmotes = state.settings.reactionEmotes === true;
+    state.settings.emoteSetId = String(state.settings.emoteSetId || '').trim();
     if (!state.settings.soundFiles) state.settings.soundFiles = {};
     if (!state.settings.soundId) state.settings.soundId = 'default';
 
@@ -570,6 +643,16 @@ export async function collectRuntimeInfo() {
                 promptTemplate: state.settings.promptTemplate,
                 enableJailbreakBlock: state.settings.enableJailbreakBlock,
                 debugMode: state.settings.debugMode,
+                // media features shape the contract and the media phase — a dump
+                // without them can't explain "no GIFs attached" reports
+                mediaProvider: state.settings.mediaProvider,
+                mediaRating: state.settings.mediaRating,
+                mediaStickers: state.settings.mediaStickers,
+                mediaMemes: state.settings.mediaMemes,
+                gifMax: state.settings.gifMax,
+                stickerMax: state.settings.stickerMax,
+                memeMax: state.settings.memeMax,
+                reactionEmotes: state.settings.reactionEmotes,
             };
             // CM readiness for the mobile-loss hypothesis: the verified getContext()
             // has no connectionManagerAvailable / getRunContext members, so derive the
@@ -705,6 +788,58 @@ export function flushApiKey() {
     return _persistApiKey.flush?.();
 }
 
+// ── Media provider key storage (Giphy; same contract as LF_API_KEY) ──
+
+let _giphyKeyCache = null;
+
+export async function getGiphyKey() {
+    if (_giphyKeyCache !== null) return _giphyKeyCache;
+    try {
+        _giphyKeyCache = (await SillyTavern.libs.localforage.getItem(LF_GIPHY_KEY)) || '';
+        return _giphyKeyCache;
+    } catch { return ''; }
+}
+
+const _persistGiphyKey = debounce(async () => {
+    try {
+        if (_giphyKeyCache) await SillyTavern.libs.localforage.setItem(LF_GIPHY_KEY, _giphyKeyCache);
+        else await SillyTavern.libs.localforage.removeItem(LF_GIPHY_KEY);
+    } catch (cause) {
+        error('Giphy key persistence failed:', cause);
+        notifyUser('error', tr('Could not save the Giphy API key.', 'dscomments.media.keySaveError'), 'giphy-key-save');
+    }
+}, 400);
+
+export function setGiphyKey(key) {
+    _giphyKeyCache = key || '';
+    _persistGiphyKey();
+}
+
+/** Flush the pending giphy-key write (blur / visibilitychange). */
+export function flushGiphyKey() {
+    return _persistGiphyKey.flush?.();
+}
+
+// ── Network helper: fetch with a hard timeout ──
+// External CDN/API hangs must never stall a generation phase until the
+// browser's own (~minutes) timeout. The hard timeout rejects with a plain
+// Error (callers treat it as "feature unavailable" and degrade), while an
+// external abort propagates its own reason (AbortError → cancelled
+// generation). Shared by emotes/media/images fetches.
+export async function fetchWithTimeout(url, { signal = null, timeoutMs = 8000, ...init } = {}) {
+    const ctrl = new AbortController();
+    const onExternalAbort = () => ctrl.abort(signal.reason);
+    if (signal?.aborted) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
+    const timer = setTimeout(() => ctrl.abort(new Error(`fetch timed out after ${timeoutMs}ms`)), timeoutMs);
+    try {
+        return await fetch(url, { ...init, signal: ctrl.signal });
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onExternalAbort);
+    }
+}
+
 // ── Confirmation Modal (via ST context; native confirm as last-resort fallback) ──
 export async function showConfirmModal(message) {
     try {
@@ -742,11 +877,17 @@ export async function showInputModal(message, defaultValue = '') {
 }
 
 // ── Message Eligibility Helpers ──
+// The commentUserPosts setting is read live (not snapshotted): toggling it in
+// the settings panel takes effect without a reload for every consumer (scroll
+// observer, restore, navigation steppers, gestures, generation targets).
+function isUserCommentable() {
+    return !!state.settings?.commentUserPosts;
+}
 export function isCommentaryDisplayEligible(msg) {
-    return !!msg && !msg.is_user && !msg.is_system;
+    return !!msg && !msg.is_system && (!msg.is_user || isUserCommentable());
 }
 export function isCommentaryGenerationEligible(msg) {
-    return !!msg && !msg.is_user && !msg.is_system && !msg.is_hidden;
+    return !!msg && !msg.is_system && !msg.is_hidden && (!msg.is_user || isUserCommentable());
 }
 
 /** Indices of display-eligible AI posts in chat order. Shared helper for
@@ -762,17 +903,21 @@ export function aiPostIndices() {
     } catch { return []; }
 }
 
-export function resolveLastAIPost() {
+/** Last commentable post (chat-restore / implicit-generation fallback).
+ *  Generation-eligibility, not a hardcoded AI filter: with commentUserPosts
+ *  on, a trailing {{user}} post is a valid fallback target — the same
+ *  eligibility the navigation steppers and gestures use, so restore and
+ *  navigation can never disagree. */
+export function resolveLastCommentablePost() {
     try {
         const ctx = getCtx();
         const chat = ctx.chat;
         if (!chat || !chat.length) return null;
         for (let i = chat.length - 1; i >= 0; i--) {
-            const msg = chat[i];
-            if (msg && !msg.is_user && !msg.is_system && !msg.is_hidden) {
+            if (isCommentaryGenerationEligible(chat[i])) {
                 return {
                     msgId: String(i),
-                    swipeIdx: typeof msg.swipe_id === 'number' ? msg.swipe_id : 0,
+                    swipeIdx: typeof chat[i].swipe_id === 'number' ? chat[i].swipe_id : 0,
                 };
             }
         }

@@ -26,7 +26,7 @@ test('valid JSON array → normalized messages with all fields', () => {
     ]);
     const out = parseCommentary(raw);
     assert.equal(out.length, 2);
-    assert.deepEqual(out[0], { username: 'coder_42', content: 'hi', replyTo: null, replyQuote: null, reactions: [{ emoji: '😭', count: '12' }] });
+    assert.deepEqual(out[0], { username: 'coder_42', content: 'hi', replyTo: null, replyQuote: null, reactions: [{ emoji: '😭', count: '12' }], gif: '', sticker: '', meme: null });
     assert.equal(out[1].replyTo, 'coder_42');
     assert.equal(out[1].replyQuote, 'short fragment');
     assert.equal(out[1].reactions[0].emoji, '🙏');
@@ -67,8 +67,13 @@ test('empty / null / whitespace → null', () => {
     assert.equal(parseCommentary('   \n\t '), null);
 });
 
-test('object (not array) → null', () => {
-    assert.equal(parseCommentary('{"username":"a","content":"x"}'), null);
+test('bare object (not array) → salvaged via object extraction', () => {
+    // Was null before the salvage hardening: the direct-parse object
+    // short-circuited the escalating attempts. Now an implausible-shape result
+    // escalates to object extraction, which recovers the single comment.
+    const out = parseCommentary('{"username":"a","content":"x"}');
+    assert.equal(out.length, 1);
+    assert.equal(out[0].username, 'a');
 });
 
 // ── parse-failure logging: console gets metadata only, body goes to the ring ──
@@ -198,4 +203,111 @@ test('truncated: one complete + one incomplete object → partial recovery', () 
 test('garbage unparseable text → null (all attempts exhausted)', () => {
     assert.equal(parseCommentary('this is not json at all'), null);
     assert.equal(parseCommentary('<<< not even close >>>'), null);
+});
+
+// ── content_filter / truncation hardening ──
+
+test('truncated tail mid-string (content_filter cut) → complete comments survive', () => {
+    // The provider cut the stream inside the last object's reactions block.
+    const raw = JSON.stringify([
+        { username: 'a', content: 'x', reactions: [{ emoji: '🔥', count: '1' }] },
+        { username: 'b', content: 'y' },
+        { username: 'c', content: 'z', reactions: [{ emoji: '🔥', count: '7' }] },
+    ], null, 2).slice(0, -30);
+    const out = parseCommentary(raw);
+    assert.deepEqual(out.map(m => m.username), ['a', 'b']);
+});
+
+test('truncated structured wrapper {"comments":[...]} → recovered in right order', () => {
+    // Regression: the old recovery appended '}' before ']', producing invalid
+    // JSON for the json_schema envelope.
+    const raw = JSON.stringify({ comments: [
+        { username: 'a', content: 'x' },
+        { username: 'b', content: 'y' },
+        { username: 'c', content: 'z' },
+    ] }, null, 2).slice(0, -25);
+    const out = parseCommentary(raw);
+    assert.deepEqual(out.map(m => m.username), ['a', 'b']);
+});
+
+test('head-cut prefill continuation: object missing only its opening { is salvaged', () => {
+    // A prefill continuation can start mid-object — the '{' was in the prefill
+    // and is never echoed in the response text.
+    const raw = '"username": "seth",\n"content": "продолжение",\n"reply": {"to": "a", "quote": "q"}\n},\n{\n"username": "tail", "content": "обрезан по';
+    const out = parseCommentary(raw);
+    assert.deepEqual(out.map(m => m.username), ['seth']);
+    assert.equal(out[0].replyTo, 'a');
+});
+
+test('repair-result shape validation: nested reply object alone does not short-circuit', () => {
+    // Extraction may find only a nested "reply" object (no username/content) —
+    // that must not count as success and block the truncated-recovery attempt.
+    const raw = '"username": "seth", "content": "x", "reply": {"to": "a", "quote": "q"} }';
+    const out = parseCommentary(raw);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].username, 'seth');
+});
+
+test('non-comments envelope {"status":...,"data":[...]} → array dug out one level down', () => {
+    const raw = JSON.stringify({ status: 'ok', data: [{ username: 'a', content: 'x' }] });
+    const out = parseCommentary(raw);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].username, 'a');
+});
+
+test('verbatim user-reported cut (head mid-string + tail mid-string) → 7 of 9 recovered', () => {
+    const raw = `раму буквально предложил за нее гелендваген",
+      "reply": {
+        "to": "dead_inside_enjoyer",
+        "quote": "ДВА КОЛОДЦА И ДЕСЯТОК БЫКОВ"
+      }
+    },
+    {
+      "username": "red_flag_collector",
+      "content": "«Когда я сдохну, Баст»\\nОСУЖДАЮ 😡",
+      "reactions": [ { "emoji": "🐈", "count": "93" }, { "emoji": "😡", "count": "41" } ]
+    },
+    {
+      "username": "shiba_sticker_bot",
+      "content": "[стикер с плачущим котом в шапке фараона]"
+    },
+    {
+      "username": "seth_apologist",
+      "content": "вы не понимаете это другое!!",
+      "reply": { "to": "red_flag_collector", "quote": "Мгновенный отмен" }
+    },
+    {
+      "username": "fashion_police_ru",
+      "content": "что у софии за туфли",
+      "reactions": [ { "emoji": "👠", "count": "19" } ]
+    },
+    {
+      "username": "lore_diggger",
+      "content": "кстати про то как она исекайнулась",
+      "reactions": [ { "emoji": "👀", "count": "52" } ]
+    },
+    {
+      "username": "cringe_inspector",
+      "content": "словил дикий испанский стыд",
+      "reactions": [ { "emoji": "💀", "count": "78" }, { "emoji": "🤡", "count": "15" } ]
+    },
+    {
+      "username": "milf_hunter_69",
+      "content": "да ладно тебе",
+      "reply": { "to": "cringe_inspector", "quote": "словил дикий испанский стыд" }
+    },
+    {
+      "username": "yandere_enjoyer",
+      "content": "зато как нефр триггернулся",
+      "reactions": [
+        {
+          "emoji": "🔥",
+          "count": "`;
+    const out = parseCommentary(raw);
+    assert.deepEqual(out.map(m => m.username), [
+        'red_flag_collector', 'shiba_sticker_bot', 'seth_apologist',
+        'fashion_police_ru', 'lore_diggger', 'cringe_inspector', 'milf_hunter_69',
+    ]);
+    assert.equal(out[0].reactions.length, 2, 'nested reactions survive extraction');
+    assert.equal(out[2].replyTo, 'red_flag_collector', 'nested reply survives extraction');
 });

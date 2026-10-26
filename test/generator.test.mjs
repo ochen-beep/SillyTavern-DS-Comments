@@ -229,6 +229,22 @@ test('generateFeed stores the parsed thread with the feed entry (saveMode)', asy
     assert.equal(entry.threads[0].content, 'stored content');
 });
 
+test('generateFeed renders and stores a truncated (content_filter) response instead of erroring', async () => {
+    setupGeneration();
+    // The provider cut the stream mid-string inside the last comment's
+    // reactions — the complete comments must still reach the feed.
+    const truncated = JSON.stringify([
+        { username: 'survivor_one', content: 'первый целый', reactions: [{ emoji: '🔥', count: '5' }] },
+        { username: 'survivor_two', content: 'второй целый', reply: { to: 'survivor_one', quote: 'первый' } },
+        { username: 'lost_tail', content: 'этот оборвали', reactions: [{ emoji: '💀', count: '9' }] },
+    ], null, 2).slice(0, -40);
+    await _testGenerateFeed('1', 0, true, async () => truncated);
+    const entry = getFeedSlot('1', 0);
+    assert.deepEqual(entry?.threads?.map(t => t.username), ['survivor_one', 'survivor_two']);
+    assert.ok(entry?.html?.includes('survivor_one'), 'feed html rendered');
+    assert.ok(!entry?.html?.includes('dsc_error'), 'no error overlay stored');
+});
+
 test('fingerprint changes when an included past thread changes (community memory is a prompt input)', async () => {
     setupGeneration();
     state.settings = {

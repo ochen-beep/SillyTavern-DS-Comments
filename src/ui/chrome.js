@@ -41,6 +41,7 @@ export function setStatus(message, opts = {}) {
                 state.abortController = null;
             }
             state.generationInProgress = false;
+            state.queuedGeneration = null;   // same cancel semantics as the regen button
             setStatus('');
         }, { once: true });
     }
@@ -93,6 +94,9 @@ export function makeRegenHandler(generateFeed) {
         if (state.generationInProgress) {
             if (state.abortController) { state.abortController.abort(); state.abortController = null; }
             state.generationInProgress = false;
+            // Cancel means stop everything: drop a parked queued generation too,
+            // or it would start right after the user pressed cancel.
+            state.queuedGeneration = null;
             return;
         }
         // The generator owns target resolution. Passing a null target keeps the

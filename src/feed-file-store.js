@@ -678,11 +678,15 @@ export function collectPastCommentThreads(anchor, maxThreads) {
     if (!Number.isInteger(anchorIdx)) return [];
 
     const threads = [];
+    const userPostsCommentable = !!state.settings?.commentUserPosts;
     // Strictly before the anchor: the anchor's own (being-replaced) feed and
     // everything after it is "the future" from the commenters' viewpoint.
     for (let i = anchorIdx - 1; i >= 0 && threads.length < limit; i--) {
         const msg = chat[i];
-        if (!msg || msg.is_user || msg.is_system || msg.is_hidden) continue;
+        if (!msg || msg.is_system || msg.is_hidden) continue;
+        // User posts join the community's history only when the feature is on;
+        // pre-feature behaviour (and legacy feeds) keep them excluded.
+        if (msg.is_user && !userPostsCommentable) continue;
         const swipeIdx = typeof msg.swipe_id === 'number' ? msg.swipe_id : 0;
         const key = slotKeyOf(msg, swipeIdx);
         if (!key) continue;

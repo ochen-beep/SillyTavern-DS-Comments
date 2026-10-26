@@ -5,13 +5,15 @@
  * application and prompt-template management (localforage, edit-on-place).
  */
 
-import { state, getCtx, BASE_URL, saveSettings, escapeHtml, getApiKey, setApiKey, DSC_FONTS, LF_PROMPTS, log, warn, NUMERIC_SETTINGS, normalizeFiniteNumber, tr } from '../core.js';
+import { state, getCtx, BASE_URL, saveSettings, escapeHtml, getApiKey, setApiKey, getGiphyKey, DSC_FONTS, LF_PROMPTS, log, warn, NUMERIC_SETTINGS, normalizeFiniteNumber, tr } from '../core.js';
 import { getProfiles, getProfileDetails } from '../connection.js';
 
 // ── Settings field map: settings.html id → state prop + input type ──
 const FIELD_MAP = {
     dsc_enabled:        { prop: 'enabled',                     type: 'checkbox' },
     dsc_autoupdate:     { prop: 'autoUpdate',                  type: 'checkbox' },
+    dsc_userposts:      { prop: 'commentUserPosts',            type: 'checkbox' },
+    dsc_userposts_auto: { prop: 'autoUpdateUserPosts',         type: 'checkbox' },
     dsc_nosave:         { prop: 'noSaveMode',                  type: 'checkbox' },
     dsc_source:         { prop: 'apiSource',                   type: 'segmented' }, // 2 buttons: Profile / Custom
     dsc_profile:        { prop: 'profileId',                   type: 'select' },
@@ -25,6 +27,17 @@ const FIELD_MAP = {
     dsc_chardesc:       { prop: 'includeCharacterDescription', type: 'checkbox' },
     dsc_pastcom:        { prop: 'includePastComments',         type: 'checkbox' },
     dsc_pastcom_depth:  { prop: 'pastCommentsDepth',           type: 'number' },
+    dsc_images:         { prop: 'includeImages',               type: 'select' },
+    dsc_media_provider: { prop: 'mediaProvider',               type: 'select' },
+    dsc_media_rating:   { prop: 'mediaRating',                 type: 'select' },
+    dsc_media_stickers: { prop: 'mediaStickers',               type: 'checkbox' },
+    dsc_media_memes:    { prop: 'mediaMemes',                  type: 'checkbox' },
+    dsc_gif_max:        { prop: 'gifMax',                      type: 'number' },
+    dsc_sticker_max:    { prop: 'stickerMax',                  type: 'number' },
+    dsc_meme_max:       { prop: 'memeMax',                     type: 'number' },
+    dsc_reaction_emotes: { prop: 'reactionEmotes',             type: 'checkbox' },
+    dsc_emote_set_id:   { prop: 'emoteSetId',                  type: 'text' },
+    dsc_structured:     { prop: 'structuredOutput',            type: 'select' },
     dsc_fontfam:        { prop: 'fontFamily',                  type: 'select' },
     dsc_fontsize:       { prop: 'fontSize',                    type: 'number' },
     dsc_launcher_mode:  { prop: 'launcherMode',                type: 'select' },
@@ -113,6 +126,8 @@ export function syncDomFromState() {
     syncSegmentedSource();
     // API key from localforage
     syncApiKeyField();
+    // Media provider keys from localforage
+    syncMediaKeyFields();
     // Volume label
     const volLbl = document.getElementById('dsc_sound_volume_val');
     if (volLbl) volLbl.textContent = `${state.settings.soundVolume ?? 30}%`;
@@ -123,6 +138,8 @@ export function syncPanelVisibility() {
     updateSourceFieldsVisibility();
     updateDepthVisibility();
     updatePastCommentsVisibility();
+    updateUserPostsVisibility();
+    updateMediaVisibility();
     updateJailbreakVisibility();
     // Sound body: on load unhide it when sound is enabled, otherwise the slider/
     // list/test button stay invisible even though the checkbox is checked.
@@ -209,6 +226,32 @@ function updatePastCommentsVisibility() {
     if (el) el.hidden = !state.settings.includePastComments;
 }
 
+/** Provider-dependent media controls. The whole provider body (rating,
+ *  stickers, caps, API key) hides as one unit when no provider is selected —
+ *  the key input lives inside it, so no per-field gating is needed. */
+export function updateMediaVisibility() {
+    const body = document.getElementById('dsc_media_provider_body');
+    if (body) body.hidden = state.settings.mediaProvider !== 'giphy';
+    // reaction emotes: the 7TV set id only makes sense with the feature on
+    const emoteSet = document.getElementById('dsc_emote_set_id');
+    if (emoteSet) emoteSet.hidden = state.settings.reactionEmotes !== true;
+    // memes: the per-generation cap rides the feature toggle
+    const memeMaxGroup = document.getElementById('dsc_meme_max_group');
+    if (memeMaxGroup) memeMaxGroup.hidden = state.settings.mediaMemes !== true;
+}
+
+async function syncMediaKeyFields() {
+    try {
+        const giphy = document.getElementById('dsc_media_giphy_key');
+        if (giphy) giphy.value = await getGiphyKey() || '';
+    } catch { /* skip */ }
+}
+
+function updateUserPostsVisibility() {
+    const el = document.getElementById('dsc_userposts_auto_row');
+    if (el) el.hidden = !state.settings.commentUserPosts;
+}
+
 function updateJailbreakVisibility() {
     const el = document.getElementById('dsc_jb_body');
     if (el) el.hidden = !state.settings.enableJailbreakBlock;
@@ -292,8 +335,9 @@ let _promptEditorReq = 0;
 // Built-in templates: served from /chat-styles/*.md, cannot be deleted or reset.
 const BUILTIN_TEMPLATES = {
     main: 'main',
+    test: 'test',
 };
-const isBuiltinTemplate = (name) => Object.prototype.hasOwnProperty.call(BUILTIN_TEMPLATES, name);
+export const isBuiltinTemplate = (name) => Object.prototype.hasOwnProperty.call(BUILTIN_TEMPLATES, name);
 const _builtinCache = {};
 
 /**

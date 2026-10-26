@@ -7,7 +7,7 @@
  * DOM ids here MUST match ui/window.js (#dscFeed) and ui/chrome.js (#dscIndicator).
  */
 
-import { state, getCtx, warn, trace, tr, START_SCREEN_KEY, isCommentaryDisplayEligible, resolveLastAIPost, getMessageSwipeIdx, pushRestoreLog, getLastFpDiag, feedShowsRealCommentary, recordWipe } from './core.js';
+import { state, getCtx, warn, trace, tr, START_SCREEN_KEY, isCommentaryDisplayEligible, resolveLastCommentablePost, getMessageSwipeIdx, pushRestoreLog, getLastFpDiag, feedShowsRealCommentary, recordWipe } from './core.js';
 import { getFeedSlot, setFeedSlot, clearFeedFile, loadFeedStore } from './feed-file-store.js';
 import { schedulePinnedPersist, clearPinnedPersist } from './pinned-store.js';
 import { recordEvent } from './event-log.js';
@@ -264,12 +264,12 @@ function resolveBestVisibleChatTarget(ctx = getCtx()) {
  * context isn't usable yet.
  *
  * Reopen no-flash rule: on panel open we must prefer the BEST
- * VISIBLE mesid from the DOM if available. Using resolveLastAIPost() first
+ * VISIBLE mesid from the DOM if available. Using resolveLastCommentablePost() first
  * causes a visible flash where the latest AI post renders briefly before the
  * observer corrects to the actually visible chat post.
  *
  * Priority: best visible DOM post, then module state (current chat only),
- * then resolveLastAIPost() as the final fallback when no visibility evidence
+ * then resolveLastCommentablePost() as the final fallback when no visibility evidence
  * is available yet.
  */
 export function resolvePreferredCommentaryTarget() {
@@ -298,7 +298,7 @@ export function resolvePreferredCommentaryTarget() {
         rejects.push(`state: currentChatId=${state.currentChatId}≠ctx=${ctx.chatId}`);
     }
 
-    const last = resolveLastAIPost();
+    const last = resolveLastCommentablePost();
     const lastN = normalizeEligibleCurrentTarget(last, ctx);
     if (lastN) {
         pushRestoreLog('resolve', `lastAIPost fallback принят: #${lastN.msgId}[${lastN.swipeIdx}] | ${rejects.join('; ')}`);

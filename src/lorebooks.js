@@ -470,6 +470,16 @@ export function buildGenerationFingerprintInput(input = {}) {
             ? Math.max(0, Math.min(10, parseInt(settings.pastCommentsDepth)))
             : null,
         pastCommentsHash: normalizeString(input.pastCommentsHash),
+        // Attached-image identity hash. CONDITIONAL on purpose: only present
+        // when images are actually attached to the anchor, so image-less
+        // generations keep the exact pre-feature fingerprint.
+        ...(input.imagesHash ? { imagesHash: normalizeString(input.imagesHash) } : {}),
+        // Comment media (GIF/sticker/meme) identity. CONDITIONAL the same
+        // way: an all-off media setup hashes identically to pre-feature. The
+        // caller computes mediaHash over the media settings shape (provider,
+        // stickers, memes, rating) — those change the contract text and what
+        // the media resolver attaches.
+        ...(input.mediaHash ? { mediaHash: normalizeString(input.mediaHash) } : {}),
         promptTemplate: normalizeString(settings.promptTemplate),
         stylePrompt: normalizeString(input.stylePrompt),
         userCount: Number.isFinite(parsedCount) && parsedCount !== 0 ? parsedCount : 5,
@@ -503,6 +513,10 @@ export function buildGenerationFingerprint(input) {
             ? Math.max(0, Math.min(10, source.pastCommentsDepth))
             : null,
         pastCommentsHash: normalizeString(source.pastCommentsHash),
+        // See buildGenerationFingerprintInput: conditional so legacy inputs
+        // (and image-less posts) hash identically to before the feature.
+        ...(source.imagesHash ? { imagesHash: normalizeString(source.imagesHash) } : {}),
+        ...(source.mediaHash ? { mediaHash: normalizeString(source.mediaHash) } : {}),
         promptTemplate: normalizeString(source.promptTemplate),
         stylePrompt: normalizeString(source.stylePrompt),
         userCount: Number.isFinite(parsedCount) && parsedCount !== 0 ? parsedCount : 5,

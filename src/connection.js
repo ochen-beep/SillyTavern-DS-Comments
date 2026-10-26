@@ -8,6 +8,8 @@
  */
 
 import { warn, trace, error, tr, getApiKey, state, showConfirmModal, notifyUser, persistSettingsNow, MODULE_NAME } from './core.js';
+import { structuredOutputFor, buildCommentsSchema } from './structured.js';
+import { recordEvent } from './event-log.js';
 
 let _cmReady = false;
 let _cmReadyChecked = false;
@@ -130,13 +132,36 @@ export async function generateWithProfile(profileIdOrName, systemPrompt, userMes
         { role: 'system', content: systemPrompt },
         ...userMessages.map(content => ({ role: 'user', content })),
     ];
-    if (assistantPrefill) messages.push({ role: 'assistant', content: assistantPrefill });
+
+    // Structured output: json_schema rides the 5th sendRequest argument, which
+    // CM merges into the request payload (shared.js: ...overridePayload). The
+    // ST server translates it to the provider-native structured-outputs field.
+    const profileSource = ctx.CONNECT_API_MAP?.[profile.api]?.source ?? null;
+    const structuredVariant = structuredOutputFor(state.settings, profileSource, profile.model);
+    const structured = structuredVariant ? buildCommentsSchema(structuredVariant) : null;
+    if (structured) {
+        // The schema replaces the assistant-role prefill: a refusal cannot be
+        // the first token when the response must validate against the schema,
+        // and strict providers reject a trailing assistant message alongside
+        // a json_schema response_format. (The settings hint promises exactly
+        // this replacement.)
+        recordEvent('log', `event=structured_output variant=${structuredVariant} source=${profileSource ?? 'unknown'} prefill=${assistantPrefill ? 'dropped' : 'none'}`);
+    } else if (assistantPrefill) {
+        messages.push({ role: 'assistant', content: assistantPrefill });
+    }
 
     let response;
     try {
         response = await ctx.ConnectionManagerRequestService.sendRequest(
             profile.id, messages, undefined,
-            { stream: false, signal: signal || null, extractData: true, includePreset: false, includeInstruct: false }
+            // extractData:false in structured mode: CM's extraction turns the
+            // response into JSON.parse(extractJsonFromData(...)), which returns
+            // {} for ANY non-pure-JSON output — prose wrappers, code fences, a
+            // content_filter-truncated body — discarding every comment the
+            // model did produce (surfaced as a 2-char "{}" response). The raw
+            // response lets parser.js's repair ladder salvage what survived.
+            { stream: false, signal: signal || null, extractData: !structured, includePreset: false, includeInstruct: false },
+            structured ? { json_schema: structured.json_schema } : {}
         );
     } catch (e) {
         // ConnectionManagerRequestService wraps every failure as
@@ -177,10 +202,14 @@ function extractTextFromResponse(resp) {
             const texts = resp.content.filter(b => b?.type === 'text' && typeof b.text === 'string').map(b => b.text);
             if (texts.length > 0) return texts.join('\n');
         }
+        // json_schema replies are auto-parsed by ST into an OBJECT content —
+        // re-stringify so parseCommentary's {comments} unwrap handles it.
+        if (typeof resp.content === 'object') return JSON.stringify(resp.content);
     }
     if (resp.choices?.[0]?.message?.content) {
         const c = resp.choices[0].message.content;
         if (typeof c === 'string') return c;
+        if (typeof c === 'object') return JSON.stringify(c);
     }
     if (Array.isArray(resp.candidates)) {
         const parts = resp.candidates[0]?.content?.parts;
@@ -211,6 +240,11 @@ export const lastCustomEndpointDebug = {
 let _customEndpointTimeoutMs = 300_000;
 export const _testSetCustomEndpointTimeout = (typeof process !== 'undefined' && process?.env?.NODE_TEST === '1')
     ? (ms) => { _customEndpointTimeoutMs = ms; }
+    : undefined;
+
+// Test-only: response text extraction (incl. the structured-output object case).
+export const _testExtractTextFromResponse = (typeof process !== 'undefined' && process?.env?.NODE_TEST === '1')
+    ? extractTextFromResponse
     : undefined;
 
 // ── Custom Endpoint (OpenAI-compatible) ──
@@ -322,10 +356,23 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
     const messages = [];
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     for (const content of userMessages) messages.push({ role: 'user', content });
-    if (assistantPrefill) messages.push({ role: 'assistant', content: assistantPrefill });
 
     const body = { messages, stream: false };
     if (model) body.model = model;
+
+    // Structured output for OpenAI-compatible custom endpoints. 'custom' +
+    // a Gemini-looking model id gets the loose (responseSchema-subset) variant.
+    // No max_tokens override: reasoning-family models (o-series, gpt-5) reject
+    // the parameter outright, and a truncated envelope is salvaged by the
+    // parser's repair ladder anyway.
+    const structuredVariant = structuredOutputFor(state.settings, 'custom', model);
+    const structured = structuredVariant ? buildCommentsSchema(structuredVariant) : null;
+    if (structured) {
+        body.response_format = structured.response_format;
+        recordEvent('log', `event=structured_output variant=${structuredVariant} source=custom prefill=${assistantPrefill ? 'dropped' : 'none'}`);
+    } else if (assistantPrefill) {
+        messages.push({ role: 'assistant', content: assistantPrefill });
+    }
 
     // ── Debug: log outgoing request ──
     // Outside debug mode only metadata is kept — full prompt bodies must

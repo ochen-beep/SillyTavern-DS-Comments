@@ -310,3 +310,61 @@ test('assistant prefill is appended as a trailing {role:assistant} message; empt
         restore();
     }
 });
+
+// ── generateWithProfile: structured mode must request the RAW response ──
+// ST's CM extraction for json_schema does JSON.parse(extractJsonFromData(...))
+// and returns {} for any non-pure-JSON output (prose wrapper, code fences,
+// content_filter truncation) — every produced comment is discarded and the
+// parser sees a 2-char "{}". Regression: structured mode must bypass it.
+
+import { generateWithProfile } from '../src/connection.js';
+
+function installProfileService(impl) {
+    globalThis._stCtx.CONNECT_API_MAP = { custom: { source: 'custom' } };
+    globalThis._stCtx.extensionSettings = {
+        ...globalThis._stCtx.extensionSettings,
+        connectionManager: { profiles: [{ id: 'p1', name: 'Test', api: 'custom', model: 'gemini-4-argon' }] },
+    };
+    globalThis._stCtx.ConnectionManagerRequestService = { sendRequest: impl };
+}
+
+test('generateWithProfile: structured mode requests raw response (extractData:false) and keeps full text', async () => {
+    const calls = [];
+    installProfileService(async (id, msgs, maxTokens, custom, override) => {
+        calls.push({ maxTokens, custom, override });
+        return {
+            choices: [{
+                message: { role: 'assistant', content: 'Вот комментарии:\n[{"username":"a","content":"x"}]\nНадеюсь, понравилось!' },
+                finish_reason: 'stop',
+            }],
+            usage: { total_tokens: 42 },
+        };
+    });
+    state.settings = { profileId: 'p1', userCount: 15, structuredOutput: 'always' };
+
+    const text = await generateWithProfile('p1', 'system', ['user block']);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].custom.extractData, false, 'raw response must be requested in structured mode');
+    assert.ok(calls[0].override?.json_schema, 'json_schema override passed');
+    assert.equal(calls[0].maxTokens, undefined, 'no max_tokens override (reasoning models reject it)');
+    assert.ok(text.includes('"username":"a"'), 'prose-wrapped JSON preserved for the repair ladder');
+    assert.ok(text.includes('Вот комментарии'), 'no lossy {} substitution');
+});
+
+test('generateWithProfile: structured off keeps CM extraction (extractData:true)', async () => {
+    const calls = [];
+    installProfileService(async (id, msgs, maxTokens, custom, override) => {
+        calls.push({ maxTokens, custom, override });
+        return { content: '[{"username":"a","content":"x"}]', reasoning: '' };
+    });
+    state.settings = { profileId: 'p1', userCount: 15 };
+
+    const text = await generateWithProfile('p1', 'system', ['user block']);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].custom.extractData, true, 'CM extraction unchanged when structured is off');
+    assert.deepEqual(calls[0].override, {}, 'no schema override');
+    assert.equal(calls[0].maxTokens, undefined, 'no forced max tokens');
+    assert.ok(text.includes('"username":"a"'));
+});

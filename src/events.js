@@ -7,7 +7,7 @@
  * The scroll observer only RESTORES cache. requestAnimationFrame batches scroll.
  */
 
-import { state, getCtx, trace, warn, isCommentaryDisplayEligible, resolveLastAIPost, getMessageSwipeIdx, bumpGenerationEpoch, pushRestoreLog } from './core.js';
+import { state, getCtx, trace, warn, isCommentaryDisplayEligible, isCommentaryGenerationEligible, resolveLastCommentablePost, getMessageSwipeIdx, bumpGenerationEpoch, pushRestoreLog } from './core.js';
 import { recordEvent } from './event-log.js';
 import { isPanelVisible } from './ui/window.js';
 import { loadFeedStore, pruneOrphanedEntries, noteChatRenamed } from './feed-file-store.js';
@@ -447,6 +447,8 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         // a message in the new chat (chatId check would reject it anyway — this
         // drop makes the lifecycle explicit and frees the memory).
         state.pendingActivatedWorldInfo = null;
+        // A queued generation from the previous chat must not drain into the new one.
+        state.queuedGeneration = null;
         if (chatId !== state.currentChatId) {
             state.currentChatId = chatId;
             state.currentPostId = null;
@@ -485,6 +487,34 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         scheduleObserverRestart('chat', 600);
     }]);
 
+    // Shared render-trigger precheck: resolve the generation fingerprint
+    // (save mode only) for the cache-hit test, bailing out (null) when the
+    // chat or the generation epoch moved while awaiting it. Anchor-aware:
+    // with includePastComments on, the fp includes this post's past-thread
+    // set, matching what generateFeed will store — otherwise the pre-check
+    // could never cache-hit. A failed fingerprint lookup is a hard miss (an
+    // undefined fp is never passed into the legacy cache path, where it
+    // would accept stale HTML).
+    const fingerprintPrecheck = async (ctx2, msgIdStr) => {
+        const chatIdSnapshot = ctx2.chatId;
+        const epochSnapshot = state.generationEpoch;
+        let generationFp;
+        let fingerprintResolved = Boolean(getGenerationFingerprint);
+        if (!state.settings.noSaveMode && getGenerationFingerprint) {
+            try {
+                generationFp = await getGenerationFingerprint(ctx2, msgIdStr);
+            } catch (cause) {
+                fingerprintResolved = false;
+                warn('getGenerationFingerprint callback error:', cause);
+                recordEvent('error', `event=fingerprint callback=getGenerationFingerprint chat=${ctx2.chatId || 'none'} error=${cause?.message || cause}`);
+            }
+
+            const currentCtx = getCtx();
+            if (currentCtx.chatId !== chatIdSnapshot || state.generationEpoch !== epochSnapshot) return null;
+        }
+        return { generationFp, fingerprintResolved };
+    };
+
     // ── CHARACTER_MESSAGE_RENDERED: THE single trigger for generation ──
     handlers.push([ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, async (messageId) => {
         if (!state.settings.enabled || !state.settings.autoUpdate) return;
@@ -515,35 +545,44 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         }
         state.pendingActivatedWorldInfo = null;
 
-        const chatIdSnapshot = ctx2.chatId;
-        const epochSnapshot = state.generationEpoch;
-        let generationFp;
-        let fingerprintResolved = Boolean(getGenerationFingerprint);
-        if (!state.settings.noSaveMode && getGenerationFingerprint) {
-            try {
-                // Anchor-aware: with includePastComments on, the fp includes
-                // this post's past-thread set, matching what generateFeed will
-                // store — otherwise the pre-check could never cache-hit.
-                generationFp = await getGenerationFingerprint(ctx2, msgIdStr);
-            } catch (cause) {
-                fingerprintResolved = false;
-                warn('getGenerationFingerprint callback error:', cause);
-                recordEvent('error', `event=fingerprint callback=getGenerationFingerprint chat=${ctx2.chatId || 'none'} error=${cause?.message || cause}`);
-            }
-
-            const currentCtx = getCtx();
-            if (currentCtx.chatId !== chatIdSnapshot || state.generationEpoch !== epochSnapshot) return;
-        }
-
-        // A failed fingerprint lookup is a hard miss. Never pass undefined from a
-        // rejection into the legacy cache path, where it would accept stale HTML.
+        const precheck = await fingerprintPrecheck(ctx2, msgIdStr);
+        if (!precheck) return;
         if (!state.settings.noSaveMode
-            && fingerprintResolved
-            && getCachedPost(msgIdStr, swipeIdx, generationFp)) return;
+            && precheck.fingerprintResolved
+            && getCachedPost(msgIdStr, swipeIdx, precheck.generationFp)) return;
 
         trace(`CHARACTER_MESSAGE_RENDERED #${msgIdStr}[${swipeIdx}]: generating (noSaveMode=${!!state.settings.noSaveMode})`);
         observeAsyncCallback(generateFeed(msgIdStr, swipeIdx, false), 'generateFeed');
     }]);
+
+    // ── USER_MESSAGE_RENDERED: optional trigger for {{user}} posts ──
+    // Gated by commentUserPosts (master) + autoUpdateUserPosts. Fires right
+    // after the user message renders — BEFORE ST builds the AI prompt — so it
+    // must never touch the pending WORLD_INFO stash: that payload describes
+    // the upcoming AI generation and is claimed by CHARACTER_MESSAGE_RENDERED.
+    // If the AI reply renders while this generation is still in flight,
+    // generateFeed's one-slot queue parks the AI request instead of dropping it.
+    if (ctx.eventTypes.USER_MESSAGE_RENDERED) {
+        handlers.push([ctx.eventTypes.USER_MESSAGE_RENDERED, async (messageId) => {
+            if (!state.settings.enabled || !state.settings.commentUserPosts || !state.settings.autoUpdateUserPosts) return;
+            const ctx2 = getCtx();
+            const msg = ctx2.chat?.[parseInt(messageId)];
+            if (!msg || !msg.is_user || msg.is_system || msg.is_hidden) return;
+            const msgIdStr = String(messageId);
+            const swipeIdx = typeof msg.swipe_id === 'number' ? msg.swipe_id : 0;
+            const msgText = (msg.mes || '').trim();
+            if (!msgText || msgText === '...' || msgText.length < 5) return;
+
+            const precheck = await fingerprintPrecheck(ctx2, msgIdStr);
+            if (!precheck) return;
+            if (!state.settings.noSaveMode
+                && precheck.fingerprintResolved
+                && getCachedPost(msgIdStr, swipeIdx, precheck.generationFp)) return;
+
+            trace(`USER_MESSAGE_RENDERED #${msgIdStr}[${swipeIdx}]: generating (noSaveMode=${!!state.settings.noSaveMode})`);
+            observeAsyncCallback(generateFeed(msgIdStr, swipeIdx, false), 'generateFeed');
+        }]);
+    }
 
     // ── MESSAGE_SWIPED: restore cache for existing swipes ──
     handlers.push([ctx.eventTypes.MESSAGE_SWIPED, async (msgId) => {
@@ -551,7 +590,7 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
         try {
             const chat = getCtx().chat;
             const msg = chat?.[msgId];
-            if (!msg || msg.is_user || msg.is_system || msg.is_hidden) return;
+            if (!isCommentaryGenerationEligible(msg)) return;
             state.navLockUntil = Date.now() + 500;
             const swipeIdx = typeof msg.swipe_id === 'number' ? msg.swipe_id : 0;
             noteGenerationNavigation(String(msgId), swipeIdx, 'swipe');
@@ -594,10 +633,9 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
                     || !Number.isInteger(curIdx)
                     || curIdx >= chat.length
                     || !chat[curIdx]
-                    || chat[curIdx].is_user
-                    || chat[curIdx].is_system;
+                    || !isCommentaryDisplayEligible(chat[curIdx]);
                 if (curGone) {
-                    const last = resolveLastAIPost();
+                    const last = resolveLastCommentablePost();
                     state.currentPostId = last?.msgId ?? null;
                     state.currentSwipeIdx = last?.swipeIdx ?? 0;
                     if (last) {
@@ -651,7 +689,7 @@ function buildEventHandlers(generateFeed, ctx, dependencies = {}) {
             try {
                 const ctx2 = getCtx();
                 const msg = ctx2.chat?.[parseInt(msgId)];
-                if (!msg || msg.is_user || msg.is_system) return;
+                if (!isCommentaryGenerationEligible(msg)) return;
                 const msgIdStr = String(msgId);
                 const swipeIdx = getMessageSwipeIdx(msgIdStr);
                 if (msgIdStr === String(state.currentPostId)) {

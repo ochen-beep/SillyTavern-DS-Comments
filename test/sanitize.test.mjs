@@ -79,3 +79,15 @@ test('sanitize: a repeated call with the same string takes the cached result', (
         globalThis.SillyTavern.libs.DOMPurify.sanitize = original;
     }
 });
+// ── media placeholders survive sanitize (data-* contract) ──
+
+test('sanitize keeps media placeholder div with data-* attributes (img still forbidden)', () => {
+    const html = '<div class="dsc_gif" data-dsc-media-src="https://media.giphy.com/a.gif" data-dsc-media-type="gif" data-dsc-media-alt="cat"></div>';
+    const clean = sanitize(html);
+    assert.match(clean, /data-dsc-media-src="https:\/\/media\.giphy\.com\/a\.gif"/);
+    assert.ok(!/<img/i.test(clean), 'no real img tags through the sanitizer');
+});
+
+test('sanitize still strips model-emitted <img> tags', () => {
+    assert.ok(!/<img/i.test(sanitize('<img src="https://evil.example.com/pixel.gif">')));
+});

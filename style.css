@@ -297,6 +297,51 @@
 
 /* reactions */
 .dsc_reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+
+/* comment media (GIF/sticker/meme) */
+/* The placeholder div survives sanitize with the URL in data-* attributes;
+   feed-controller upgrades it to an <img> right after insertion. The wrapper
+   hugs the image (fit-content) so the skeleton background never paints a
+   wider band than the media itself; max-width caps it to the column. */
+.dsc_gif {
+    margin-top: 6px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    width: fit-content;
+    max-width: 100%;
+    line-height: 0;   /* no baseline gap under the inline img */
+}
+.dsc_gif_img {
+    display: block;
+    max-width: 100%;
+    max-height: 260px;
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    cursor: zoom-in;
+}
+.dsc_gif_sticker { background: transparent; }
+
+/* fullscreen media viewer: single reused <dialog> in the top layer (above all
+   extension and ST chrome). Any tap, pinch-in or Esc closes it. */
+dialog.dsc_lightbox {
+    margin: auto;
+    border: none;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.9);
+    touch-action: none;   /* the pinch is ours, not the browser page-zoom */
+}
+dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
+.dsc_lightbox_img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;   /* upscale small-caption memes to the viewport */
+}
 .dsc_reaction {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 2px 8px 2px 6px; border-radius: 8px; cursor: default;
@@ -309,6 +354,15 @@
 .dsc_reaction:active { transform: scale(0.92); }
 .dsc_reaction_emoji { font-size: 1.05em; line-height: 1; }
 .dsc_reaction_count { font-size: 0.78em; font-weight: 600; color: var(--dsc-text); opacity: 0.8; }
+/* emote reaction chip: picture sized to the text line on every device —
+   scales with the feed's font settings, never overflows the chip */
+.dsc_reaction_emote_img {
+    display: block;
+    height: 1.5em;
+    width: auto;
+    max-width: 64px;
+    border-radius: 3px;
+}
 
 /* status messages (error/cancel/info) */
 .dsc_status { text-align: center; padding: 24px 16px; color: var(--dsc-text); opacity: 0.7; font-size: 0.9em; }
@@ -423,7 +477,7 @@
     /* #qr--bar is display:flex with flex-wrap:wrap. Be a fixed-size flex item so
        the launcher never grows/shrinks or forces siblings to wrap on mobile. */
     flex: 0 0 auto;
-    min-width: 40px; min-height: 36px; padding: 0 10px !important;
+    width: 36px; height: 36px; padding: 0 !important;
     border-radius: 8px; cursor: pointer; user-select: none;
     color: var(--SmartThemeBodyColor, rgba(255, 255, 255, 0.82));
     background: rgba(255, 255, 255, 0.06);
@@ -518,6 +572,13 @@
 .dsc_field_group > .dsc_toggle_row { padding-left: 0; padding-right: 0; }
 @media (hover: hover) { .dsc_toggle_row:hover { background: rgba(255, 255, 255, 0.05); } }
 .dsc_field_group { margin: 8px 6px; }
+/* Подсказка <small> идёт инлайном сразу после текста <b> внутри label — при
+   переносе метки на две строки хинт прилипает к её второй строке. Блочный
+   display гарантирует перенос на новую строку независимо от темы и локали. */
+.dsc_hint {
+    display: block; margin-top: 3px;
+    font-size: 0.82em; line-height: 1.35; opacity: 0.62;
+}
 .dsc_field_group_separated { margin-top: 16px; }
 .dsc_field_label { display: block; font-size: 0.78em; font-weight: 600; opacity: 0.7; margin-bottom: 5px; }
 .dsc_sound_controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 1fr); align-items: center; gap: 10px; }
@@ -669,3 +730,5 @@
    above this window (2999) and its menus (3500). A previous override here
    forced them down to 4000, below ST's own 4001-4100 layers (character popup,
    chat-select, drawer combos). */
+/* unresolved media request in a media-only comment — bracketed degradation */
+.dsc_media_fallback { opacity: 0.55; font-style: italic; }

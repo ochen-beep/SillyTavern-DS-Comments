@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PROMPT_CONTRACT } from '../src/prompt-contract.js';
+import { PROMPT_CONTRACT, buildContract } from '../src/prompt-contract.js';
 
 test('PROMPT_CONTRACT is a non-empty string', () => {
     assert.equal(typeof PROMPT_CONTRACT, 'string');
@@ -71,4 +71,83 @@ test('contract documents the past-comment community-memory blocks', () => {
     assert.match(PROMPT_CONTRACT, /\[Reader comments on an earlier chapter\]/);
     assert.match(PROMPT_CONTRACT, /remember what was said there/);
     assert.match(PROMPT_CONTRACT, /still belong only to the `\[Current chapter\]`/);
+});
+// ── buildContract (media sections) ──
+
+test('buildContract with all media off returns the plain contract byte-identically', () => {
+    assert.equal(buildContract({}), PROMPT_CONTRACT);
+    assert.equal(buildContract(), PROMPT_CONTRACT);
+});
+
+test('buildContract appends only the enabled media sections', () => {
+    const gifOnly = buildContract({ gif: true });
+    assert.ok(gifOnly.startsWith(PROMPT_CONTRACT));
+    assert.match(gifOnly, /GIF ATTACHMENTS/);
+    assert.ok(!gifOnly.includes('STICKER ATTACHMENTS'));
+    assert.ok(!gifOnly.includes('MEME ATTACHMENTS'));
+
+    const all = buildContract({ gif: true, sticker: true, meme: true });
+    assert.match(all, /GIF ATTACHMENTS/);
+    assert.match(all, /STICKER ATTACHMENTS/);
+    assert.match(all, /MEME ATTACHMENTS/);
+    // Media sections teach request fields, never URLs
+    assert.match(all, /NEVER put URLs/);
+});
+
+test('media sections reference the fields the parser reads', () => {
+    const all = buildContract({ gif: true, sticker: true, meme: true });
+    assert.match(all, /"gif"/);
+    assert.match(all, /"sticker"/);
+    assert.match(all, /"meme"/);
+    assert.match(all, /"template"/);
+});
+
+test('reaction emote codes enter the contract only when the pack provides them', () => {
+    const base = buildContract({});
+    assert.ok(!base.includes('REACTION EMOTES'), 'no emote section without codes');
+    const emptyPack = buildContract({ emoteCodes: [] });
+    assert.ok(!emptyPack.includes('REACTION EMOTES'), 'an empty pack teaches nothing');
+});
+
+test('buildContract teaches the emote code list when provided', () => {
+    const withEmotes = buildContract({ emoteCodes: ['FeelsGoodMan', 'monkaS'] });
+    assert.match(withEmotes, /REACTION EMOTES/);
+    assert.match(withEmotes, /FeelsGoodMan, monkaS/);
+    // media sections and the emote section compose
+    const mixed = buildContract({ meme: true, emoteCodes: ['LuL'] });
+    assert.match(mixed, /MEME ATTACHMENTS/);
+    assert.match(mixed, /REACTION EMOTES/);
+});
+
+test('buildContract teaches per-type caps and omits sections capped at 0', () => {
+    const two = buildContract({ gif: true, gifMax: 5 });
+    assert.match(two, /at most 5 GIFs per generation/);
+    assert.ok(!two.includes('STICKER ATTACHMENTS'));
+
+    const zeroed = buildContract({ gif: true, sticker: true, gifMax: 0, stickerMax: 3 });
+    assert.ok(!zeroed.includes('GIF ATTACHMENTS'), 'cap 0 removes the section');
+    assert.match(zeroed, /at most 3 stickers per generation/);
+});
+
+test('buildContract teaches the one-media-field rule only with multiple media types', () => {
+    assert.ok(!buildContract({ gif: true }).includes('at most ONE media field'));
+    assert.ok(!buildContract({ gif: true, sticker: true, stickerMax: 0 }).includes('at most ONE media field'));
+    assert.match(buildContract({ gif: true, sticker: true }), /at most ONE media field/);
+    assert.match(buildContract({ meme: true, gif: true }), /at most ONE media field/);
+});
+
+test('buildContract singularizes caps of 1', () => {
+    assert.match(buildContract({ meme: true, memeMax: 1 }), /at most 1 meme per generation/);
+    assert.match(buildContract({ sticker: true, stickerMax: 1 }), /at most 1 sticker per generation/);
+});
+
+test('meme section requires content like the gif section does', () => {
+    const meme = buildContract({ meme: true });
+    assert.match(meme, /"content" stays required/);
+});
+
+test('one-media-field rule names only the enabled types', () => {
+    const gifMeme = buildContract({ gif: true, meme: true });
+    assert.match(gifMeme, /at most ONE media field \("gif", "meme"\)/);
+    assert.ok(!gifMeme.includes('"sticker"'), 'disabled sticker type stays out of the rule');
 });

@@ -8,7 +8,7 @@ import {
     state, MODULE_NAME, DISPLAY_NAME, META_KEY, LF_PROMPTS, LF_API_KEY, LF_SOUND, LF_PINNED, LF_EVENTLOG,
     defaultSettings, FOLDER_NAME,
     loadSettings, saveSettings, flushSettings, getCtx, log, trace, warn, error, tr,
-    setApiKey, flushApiKey, showConfirmModal, showInputModal, debounce, bumpGenerationEpoch,
+    setApiKey, flushApiKey, setGiphyKey, getGiphyKey, flushGiphyKey, showConfirmModal, showInputModal, debounce, bumpGenerationEpoch,
     observePersistence, dumpRestoreLog, clearRestoreLog, collectRuntimeInfo,
     dumpDebugLog, clearDebugLog,
 } from './src/core.js';
@@ -38,11 +38,14 @@ import {
     syncDomFromState, syncPanelVisibility as syncSettingsSections, FIELD_MAP,
     applyFontSize, applyFontFamily, populateProfiles,
     syncPromptEditor, loadPromptContent, savePromptContent, savePromptAs, deletePrompt, resetPromptToBuiltin,
+    isBuiltinTemplate,
     migrateTemplatesFromLocalforage,
     syncNumericInput, createSettingsLorebookLifecycle,
 } from './src/ui/settings-sync.js';
 import { createLorebookPicker } from './src/ui/lorebook-picker.js';
 import { getChatLoreConfig, saveChatLoreConfig } from './src/lorebooks.js';
+import { refreshEmoteManifest } from './src/emotes.js';
+import { probeGiphy } from './src/media.js';
 import { lastCustomEndpointDebug } from './src/connection.js';
 import {
     toggleTypographyPopover, closeTypographyPopover, isTypographyOpen,
@@ -330,6 +333,13 @@ async function init(isCancelled) {
         });
     }
 
+    // Warm the emote manifest cache so cache restores right after page load
+    // upgrade reaction chips to images instead of textual codes. Fire-and-
+    // forget: generations refresh it again before rendering.
+    if (state.settings.reactionEmotes === true) {
+        refreshEmoteManifest().catch((e) => warn('emote manifest warmup failed:', e));
+    }
+
     log('Initialized.');
 }
 
@@ -514,7 +524,7 @@ function bindSettingsPanelEvents() {
     if (!root) return;
 
     // Section accordion toggles
-    root.addEventListener('click', (e) => {
+    root.addEventListener('click', async (e) => {
         const header = e.target.closest('.dsc_section_header');
         if (header) {
             e.stopPropagation();
@@ -543,6 +553,22 @@ function bindSettingsPanelEvents() {
         if (e.target.closest('#dsc_template_reset'))  { handleTemplateReset(); return; }
         if (e.target.closest('#dsc_template_del'))    { handleTemplateDel(); return; }
         if (e.target.closest('#dsc_sound_test')) { playNotificationSound(); return; }
+        // Giphy key probe: validates the CURRENTLY PERSISTED key (the debounced
+        // localforage write may lag the input by up to 400 ms).
+        if (e.target.closest('#dsc_giphy_test')) {
+            const key = await getGiphyKey();
+            const result = await probeGiphy({ apiKey: key, rating: state.settings.mediaRating });
+            if (result.ok) {
+                toastr?.success(tr('Giphy key works.', 'dscomments.media.keyTestOk'), DISPLAY_NAME);
+            } else if (result.reason === 'no_key') {
+                toastr?.warning(tr('Enter an API key first.', 'dscomments.media.keyTestNoKey'), DISPLAY_NAME);
+            } else if (result.reason === 'network') {
+                toastr?.error(tr('Giphy is unreachable (network error).', 'dscomments.media.keyTestNetwork'), DISPLAY_NAME);
+            } else {
+                toastr?.error(tr('Giphy rejected the key (HTTP {status}).', 'dscomments.media.keyTestBad').replace('{status}', result.status ?? '?'), DISPLAY_NAME);
+            }
+            return;
+        }
         // Danger zone: clear feed + all cached commentary.
         if (e.target.closest('#dsc_clear_all')) { handleClearAll(); return; }
         // Debug: export captured restore/feed-loss log as a downloadable .json.
@@ -571,9 +597,15 @@ function bindSettingsPanelEvents() {
             }
             return;
         }
+        // The Giphy key is a localforage-backed password field, NOT a FIELD_MAP
+        // setting — it must flush before the cfg gate below (which would
+        // silently drop its change events).
+        if (el.id === 'dsc_media_giphy_key') { flushGiphyKey(); return; }
         const cfg = FIELD_MAP[el.id];
         if (!cfg) return;
         if (el.id === 'dsc_apikey') { flushApiKey(); return; }
+        if (el.id === 'dsc_media_provider') syncSettingsSections();
+        if (el.id === 'dsc_media_memes') syncSettingsSections();
         if (el.id === 'dsc_template') {
             state.settings.promptTemplate = el.value;
             saveSettings();
@@ -609,7 +641,10 @@ function bindSettingsPanelEvents() {
         // Section visibility follow-ups
         if (el.id === 'dsc_hist') syncSettingsSections();
         if (el.id === 'dsc_pastcom') syncSettingsSections();
+        if (el.id === 'dsc_userposts') syncSettingsSections();
         if (el.id === 'dsc_jb_enable') syncSettingsSections();
+        // reaction emotes: the 7TV set-id field rides this toggle
+        if (el.id === 'dsc_reaction_emotes') syncSettingsSections();
         if (el.id === 'dsc_sound_enable') {
             document.getElementById('dsc_sound_body').hidden = !el.checked;
             const volume = document.getElementById('dsc_sound_volume');
@@ -623,6 +658,9 @@ function bindSettingsPanelEvents() {
     // input events (text, number, range, textarea)
     root.addEventListener('input', (e) => {
         const el = e.target;
+        // The localforage-backed Giphy key first: the FIELD_MAP gate below
+        // would otherwise drop its input events (it is not a registered setting).
+        if (el.id === 'dsc_media_giphy_key') { setGiphyKey(el.value); return; }
         const cfg = FIELD_MAP[el.id];
         if (!cfg) return;
         if (el.id === 'dsc_apikey') { setApiKey(el.value); return; }
@@ -652,12 +690,12 @@ async function handleTemplateSave() {
         toastr?.warning(tr('The template is empty — enter some text first.', 'dscomments.template.emptySave'));
         return;
     }
-    if (cur === 'main') {
-        const name = await showInputModal(tr('Save as a new template:', 'dscomments.template.saveAs'), 'main_copy');
+    if (isBuiltinTemplate(cur)) {
+        const name = await showInputModal(tr('Save as a new template:', 'dscomments.template.saveAs'), `${cur}_copy`);
         if (!name) return;
         const ok = await savePromptAs(name, content);
         if (ok) { await syncPromptEditor(); toastr?.success(tr('Template created', 'dscomments.template.created')); }
-        else { toastr?.warning(tr('The name \'main\' is reserved for the built-in template.', 'dscomments.template.reservedName')); }
+        else { toastr?.warning(tr('That name is reserved for a built-in template.', 'dscomments.template.reservedName')); }
         return;
     }
     await savePromptContent(cur, content);
@@ -676,7 +714,7 @@ async function handleTemplateCreate() {
 
 async function handleTemplateReset() {
     const cur = state.settings.promptTemplate || 'main';
-    if (cur === 'main') return;   // Built-ins cannot be reset (button is disabled; guard anyway).
+    if (isBuiltinTemplate(cur)) return;   // Built-ins cannot be reset (button is disabled; guard anyway).
     const ok = await showConfirmModal(tr('Reset vibe to the built-in template (main)?', 'dscomments.template.resetConfirm'));
     if (!ok) return;
     await resetPromptToBuiltin();
@@ -686,7 +724,7 @@ async function handleTemplateReset() {
 
 async function handleTemplateDel() {
     const cur = state.settings.promptTemplate || 'main';
-    if (cur === 'main') return;   // Built-ins cannot be deleted (button is disabled; guard anyway).
+    if (isBuiltinTemplate(cur)) return;   // Built-ins cannot be deleted (button is disabled; guard anyway).
     const ok = await showConfirmModal(tr('Delete this template?', 'dscomments.template.deleteConfirm'));
     if (!ok) return;
     await deletePrompt(cur);
@@ -936,6 +974,7 @@ function onVisibilityChange() {
     if (document.visibilityState !== 'hidden') return;
     flushSettings();
     flushApiKey();
+    flushGiphyKey();
     flushPinnedPersist();
     flushEventLog();
     observePersistence(
