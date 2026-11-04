@@ -13,7 +13,7 @@ import {
     initCacheRestore, selectCommentaryTarget, resolvePreferredCommentaryTarget,
     restoreCachedCommentary, restoreForCurrentChatPost, showCurrentFeed,
 } from '../src/cache.js';
-import { _seedSaveCache, _resetFeedFileStore, getFeedSlot } from '../src/feed-file-store.js';
+import { _seedSaveCache, _resetFeedFileStore, getFeedSlot, setFeedSlot, _flushWriteChain } from '../src/feed-file-store.js';
 import { initFeedController } from '../src/ui/feed-controller.js';
 import { initLifecycle, onNoSaveModeChanged } from '../src/lifecycle.js';
 import { flushPinnedPersist } from '../src/pinned-store.js';
@@ -571,6 +571,46 @@ test('onNoSaveModeChanged pins a cache entry from the current generation', async
     await onNoSaveModeChanged();
 
     assert.equal(state.pinnedFeeds.get(ctx.chatId)?.html, '<p>current generation</p>');
+});
+
+test('onNoSaveModeChanged OFF loads the store mirror before any write can wipe the file', async () => {
+    // Boot-in-noSave session: init skipped loadFeedStore, so the mirror is
+    // empty even though the server file holds entries. Switching back to
+    // save mode must load it — otherwise the next setFeedSlot overwrites the
+    // file with a fresh mirror and drops every prior entry.
+    const ctx = getCtx();
+    ctx.extensionSettings = {};
+    ctx.chatId = 'c-nosave-back';
+    ctx.characterId = 4;
+    ctx.chat = [
+        {
+            name: 'Char', is_user: false, is_system: false, is_hidden: false,
+            mes: 'ai reply', send_date: '2026-08-19T10:00:00.000Z',
+            swipes: ['ai reply'], swipe_id: 0, swipe_info: [{ send_date: '2026-08-19T10:00:00.000Z' }],
+        },
+        {
+            name: 'Char', is_user: false, is_system: false, is_hidden: false,
+            mes: 'second reply', send_date: '2026-08-19T11:00:00.000Z',
+            swipes: ['second reply'], swipe_id: 0, swipe_info: [{ send_date: '2026-08-19T11:00:00.000Z' }],
+        },
+    ];
+    ctx.chatMetadata = { dscomments_commentary: { guid: 'gnosaveback' } };
+    globalThis._stFiles['dsc_gnosaveback.json'] = JSON.stringify({
+        v: 2,
+        entries: { '2026-08-19T10:00:00.000Z': { v: 2, html: '<p>survivor</p>', ts: 1, fp: null, generationFp: null, threads: null } },
+    });
+    _resetFeedFileStore();                      // simulate the skipped noSave init: no mirror
+    state.settings.noSaveMode = false;
+    initLifecycle({ getCachedPostForCurrentGeneration, storeFeed, showCurrentFeed: () => {}, syncRegenVisual: () => {} });
+
+    await onNoSaveModeChanged();
+
+    // mirror is live → a save to a DIFFERENT slot keeps the prior entry
+    setFeedSlot('1', 0, '<p>new feed</p>', 'fp-new');
+    await _flushWriteChain();
+    const doc = JSON.parse(globalThis._stFiles['dsc_gnosaveback.json']);
+    assert.equal(doc.entries['2026-08-19T10:00:00.000Z'].html, '<p>survivor</p>', 'prior entry kept');
+    assert.equal(doc.entries['2026-08-19T11:00:00.000Z'].html, '<p>new feed</p>', 'new entry stored alongside');
 });
 test('cache hit makes no server or metadata writes', () => {
     _seedSaveCache({ '1': { '0': { html: '<p>hi</p>', timestamp: 100, fp: 'fp:hi' } } });
