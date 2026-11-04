@@ -116,7 +116,7 @@ export function upgradeMediaPlaceholders(root) {
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
             img.src = rawUrl;
-            img.addEventListener('error', () => trace(`media failed to load: ${url}`));
+            img.addEventListener('error', () => trace(`media failed to load: ${rawUrl}`));
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);
