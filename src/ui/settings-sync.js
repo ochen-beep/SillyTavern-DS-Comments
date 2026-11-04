@@ -98,6 +98,9 @@ export function createSettingsLorebookLifecycle({
                     runtimeState.generationInProgress = false;
                     runtimeState.generationTarget = null;
                     runtimeState.generationObservedTarget = null;
+                    // Same abort semantics as index.js abortActiveGeneration: a
+                    // parked queue entry must not outlive the invalidation.
+                    runtimeState.queuedGeneration = null;
                     persistConfig(config, ctx);
                 },
             });

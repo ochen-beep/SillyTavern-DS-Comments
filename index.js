@@ -747,6 +747,10 @@ function abortActiveGeneration() {
     state.generationInProgress = false;
     state.generationTarget = null;
     state.generationObservedTarget = null;
+    // A parked one-slot queue entry must not outlive the abort: its epoch is
+    // now stale, and a surviving entry would be drained by the next completed
+    // generation — running a request the user just cancelled/cleared.
+    state.queuedGeneration = null;
 }
 
 /** Clear feed + cache for current chat. */
