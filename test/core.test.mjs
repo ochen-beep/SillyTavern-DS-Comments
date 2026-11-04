@@ -69,6 +69,9 @@ test('extractText: strips tags, collapses nested html to text', () => {
     assert.equal(extractText('<p>hello</p>').trim(), 'hello');
     assert.equal(extractText('<b>hi</b> there').trim(), 'hi there');
     assert.equal(extractText(''), '');
+    // Message text is model/import-controlled: the tag-and-handler payload must
+    // degrade to plain text (DOMParser is inert — no execution by construction).
+    assert.equal(extractText('a <img src=x onerror="alert(1)"> b').trim(), 'a  b');
 });
 
 // ── eligibility ──

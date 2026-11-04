@@ -52,6 +52,17 @@ globalThis.window = {
     prompt: () => null,
 };
 
+// core.js extractText parses through DOMParser (inert document — no resource
+// loads, no inline handler execution). Reuses makeEl's tag-stripping
+// textContent; nothing here can execute, which is the point being modeled.
+globalThis.DOMParser = class {
+    parseFromString(html) {
+        const body = makeEl();
+        body.innerHTML = String(html ?? '');
+        return { body };
+    }
+};
+
 // ── fetch mock: routes /api/files/* + /user/files/* to an in-memory FS ──
 // The server-file store (src/feed-file-store.js) talks to these three
 // endpoints. Tests (and any module importing it transitively) get a tiny

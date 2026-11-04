@@ -310,12 +310,14 @@ export function hashHue(name) {
     return Math.abs(hash) % 360;
 }
 
-const _extractTmp = document.createElement('div');
+// DOMParser documents are inert: no resource loads, no inline handler
+// execution. A detached div does run <img src=x onerror=...> handlers parsed
+// from model / imported-chat message text, so plain innerHTML must not be
+// used here. Non-rendered documents make innerText === textContent, so the
+// extracted text is byte-identical to the previous div-based implementation.
+const _extractParser = new DOMParser();
 export function extractText(htmlString) {
-    _extractTmp.innerHTML = htmlString;
-    const text = _extractTmp.innerText || _extractTmp.textContent || '';
-    _extractTmp.innerHTML = '';
-    return text;
+    return _extractParser.parseFromString(String(htmlString ?? ''), 'text/html').body.textContent || '';
 }
 
 // ── HTML Escape (single-pass) ──
