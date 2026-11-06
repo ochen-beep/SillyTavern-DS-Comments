@@ -22,7 +22,7 @@
 import { trace, warn, error, LF_PINNED, START_SCREEN_KEY } from './core.js';
 import { recordEvent } from './event-log.js';
 
-const MAX_CHATS = 32;
+const MAX_CHATS = 64;
 
 /**
  * Snapshot the Map into the persisted shape, pruning to MAX_CHATS (oldest by ts
