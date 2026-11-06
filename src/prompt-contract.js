@@ -31,7 +31,7 @@ Example (note: reply's "content" is a real message, and its "quote" is copied fr
 - "content": message text. Can be multi-line with \\n. Can contain markdown, roleplay actions, ANY text
 - "reactions": optional array of {emoji, count} objects — only for messages that genuinely hit
 - "reply": optional object {to, quote} — quote is 4-8 words copied from the target's message; the reply's "content" is the commenter's own real reaction — NEVER a placeholder like "reply text here"
-- Nickname: max 64 chars, NO colons inside nickname
+- Nickname: max 32 chars, NO colons inside nickname
 - Max 1–4 reactions per message — only messages that genuinely hit
 - Counts: realistic numbers like "3", "17", "2.4K" — NOT every message needs reactions
 
