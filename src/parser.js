@@ -272,12 +272,6 @@ export function parseCommentary(rawText) {
     text = text.replace(/```\s*$/gm, '');
     text = text.trim();
 
-    // Guard: skip oversized responses
-    if (text.length > 100_000) {
-        warn('parseCommentary: response too large, skipping JSON parse');
-        return null;
-    }
-
     // Structured-output mode wraps the array in an object root (json_schema
     // forbids a bare-array root): { "comments": [...] }. Unwrap it here so the
     // rest of the pipeline never cares which mode produced the text.
