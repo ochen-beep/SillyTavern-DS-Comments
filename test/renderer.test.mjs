@@ -3,8 +3,8 @@
  * DS Comments — renderer unit tests.
  *
  * renderMessages: HTML generation from parsed messages. Checks
- * mini-markdown (bold/italic/code/strike/br), reply-bar, reactions (max 6,
- * count omitted when empty), and the XSS contract — username / reply-name /
+ * mini-markdown (bold/italic/code/strike/br), reply-bar, reactions (all
+ * chips, count omitted when empty), and the XSS contract — username / reply-name /
  * quote / emoji / count go through escapeHtml. content passes through
  * «sanitize» (identity in the stub), so its XSS safety is delegated to
  * DOMPurify and a separate contract test, not here.
@@ -141,11 +141,11 @@ test('reactions: rendered, count chip omitted when empty', () => {
     assert.ok(second.indexOf('dsc_reaction_count') === -1 || second.indexOf('dsc_reaction_count') > 50, 'empty count should omit count chip');
 });
 
-test('reactions: capped at 6 chips', () => {
+test('reactions: every chip rendered, no cap', () => {
     const reactions = Array.from({ length: 10 }, (_, i) => ({ emoji: String(i), count: '1' }));
     const html = renderMessages([msg({ reactions })]);
     const chipCount = (html.match(/class="dsc_reaction"/g) || []).length;
-    assert.equal(chipCount, 6);
+    assert.equal(chipCount, 10);
 });
 
 // ── XSS contract (renderer escape per field) ──

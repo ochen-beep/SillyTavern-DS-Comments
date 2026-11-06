@@ -162,14 +162,14 @@ export function renderMessages(messages) {
             </div>`;
         }
 
-        // ── Reactions (optional, max 6 chips) ──
+        // ── Reactions (optional; every chip the model gave) ──
         // An emoji value that names an emote in the loaded pack renders as a
         // CODE placeholder — upgradeMediaPlaceholders resolves code → URL from
         // the live manifest (the persisted URL is never trusted, only the
         // code), unknown codes fall through to plain text.
         let reactionsHtml = '';
         if (msg.reactions && msg.reactions.length > 0) {
-            const chips = msg.reactions.slice(0, 6).map(r => {
+            const chips = msg.reactions.map(r => {
                 const code = String(r.emoji || '').replace(/^:|:$/g, '');
                 const emoteUrl = getEmoteUrl(code);
                 const emojiHtml = emoteUrl
