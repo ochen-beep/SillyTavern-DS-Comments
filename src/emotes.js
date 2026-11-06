@@ -109,16 +109,8 @@ export function getEmoteUrl(code) {
     return Object.prototype.hasOwnProperty.call(_merged, code) ? _merged[code] : null;
 }
 
-/** Codes the contract may teach the model, sorted, capped for prompt size.
- *  The cap is fixed: a large 7TV set is deterministically sampled down. */
+/** Codes the contract may teach the model, sorted. The full pack is taught —
+ *  prompt size grows with the user's emote set. */
 export function getEmoteCodes() {
-    const cap = 48;
-    const codes = Object.keys(_merged);
-    if (codes.length <= cap) return codes.sort();
-    // Deterministic spread covering both ends (round keeps it monotonic and
-    // duplicate-free because the stride is ≥ 1).
-    const stride = codes.length / cap;
-    const out = [];
-    for (let i = 0; i < cap; i++) out.push(codes[Math.round(i * stride)]);
-    return out.sort();
+    return Object.keys(_merged).sort();
 }
