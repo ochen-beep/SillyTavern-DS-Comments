@@ -19,6 +19,8 @@ const FIELD_MAP = {
     dsc_profile:        { prop: 'profileId',                   type: 'select' },
     dsc_endpoint:       { prop: 'customEndpoint',              type: 'text' },
     dsc_model:          { prop: 'customModel',                 type: 'text' },
+    dsc_stream:         { prop: 'stream',                      type: 'checkbox' },
+    dsc_extrabody:      { prop: 'extraBody',                   type: 'text' },
     dsc_apikey:         { prop: '__apikey',                    type: 'password' }, // localforage-backed
     dsc_count:          { prop: 'userCount',                   type: 'number' },
     dsc_depth:          { prop: 'contextDepth',                type: 'number' },

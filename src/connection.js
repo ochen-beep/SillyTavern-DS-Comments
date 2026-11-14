@@ -89,6 +89,30 @@ export async function getProfileDetails(profileId) {
     } catch (e) { warn('getProfileDetails error:', e); return null; }
 }
 
+/**
+ * Parse the "Extra params (JSON)" setting into a request-body mixin. Empty
+ * string → {} (no mixin). Validated BEFORE any request: non-JSON, non-object
+ * values and the "stream" key are hard errors — the streaming toggle owns
+ * `stream`, a manual stream:true/false would break the SSE parser's contract.
+ */
+function parseExtraBody(raw) {
+    const extraRaw = String(raw ?? '').trim();
+    if (!extraRaw) return {};
+    let extra;
+    try {
+        extra = JSON.parse(extraRaw);
+    } catch {
+        throw new Error(tr('Extra params (JSON) is not valid JSON.', 'dscomments.connection.extraNotJson'));
+    }
+    if (!extra || typeof extra !== 'object' || Array.isArray(extra)) {
+        throw new Error(tr('Extra params (JSON) must be a JSON object.', 'dscomments.connection.extraNotObject'));
+    }
+    if ('stream' in extra) {
+        throw new Error(tr('Extra params (JSON) must not set "stream" — it is controlled by the Streaming toggle.', 'dscomments.connection.extraStreamForbidden'));
+    }
+    return extra;
+}
+
 export async function generateWithProfile(profileIdOrName, systemPrompt, userMessages, assistantPrefill = '', signal = null) {
     const ctx = SillyTavern.getContext();
 
@@ -150,6 +174,16 @@ export async function generateWithProfile(profileIdOrName, systemPrompt, userMes
         messages.push({ role: 'assistant', content: assistantPrefill });
     }
 
+    // "Extra params (JSON)": parsed and stream-banned BEFORE the request. The
+    // double packet rides the 5th sendRequest argument — top-level keys are
+    // read by native ST sources, custom_include_body bypasses the ST server
+    // whitelist for CUSTOM sources (without it, keys like reasoning_effort
+    // never reach the provider). The structured schema wins over a user
+    // json_schema mixin: the setting is a deliberate transport-level feature.
+    const extra = parseExtraBody(state.settings.extraBody);
+    const override = Object.keys(extra).length ? { ...extra, custom_include_body: extra } : {};
+    if (structured) override.json_schema = structured.json_schema;
+
     let response;
     try {
         response = await ctx.ConnectionManagerRequestService.sendRequest(
@@ -160,8 +194,8 @@ export async function generateWithProfile(profileIdOrName, systemPrompt, userMes
             // content_filter-truncated body — discarding every comment the
             // model did produce (surfaced as a 2-char "{}" response). The raw
             // response lets parser.js's repair ladder salvage what survived.
-            { stream: false, signal: signal || null, extractData: !structured, includePreset: false, includeInstruct: false },
-            structured ? { json_schema: structured.json_schema } : {}
+            { stream: state.settings.stream === true, signal: signal || null, extractData: !structured, includePreset: false, includeInstruct: false },
+            override
         );
     } catch (e) {
         // ConnectionManagerRequestService wraps every failure as
@@ -176,7 +210,35 @@ export async function generateWithProfile(profileIdOrName, systemPrompt, userMes
         throw new Error(tr('Profile {name}: {msg}', 'dscomments.connection.profileResponse').replace('{name}', profile.name).replace('{msg}', detail));
     }
 
-    const text = extractTextFromResponse(response);
+    // stream:true returns an AsyncGenerator FACTORY whose chunks carry the
+    // ACCUMULATED text in .text — take the last string. APIs without stream
+    // support (and stream:false) return a plain object instead — extract from
+    // it as before. Iteration sits OUTSIDE the sendRequest try/catch: a cancel
+    // mid-stream rejects the reader AFTER sendRequest resolved, and must map
+    // to AbortError (generator.js renders a clean "cancelled" state) rather
+    // than bubbling as a generic failure.
+    let text = null;
+    if (typeof response === 'function') {
+        text = '';
+        try {
+            for await (const chunk of response()) {
+                if (typeof chunk?.text === 'string') text = chunk.text;
+            }
+        } catch (e) {
+            // Abort may arrive from the iteration itself (signal tears down the
+            // reader mid-stream) — map it the same way sendRequest's error is.
+            if (signal?.aborted || e?.name === 'AbortError' || e?.cause?.name === 'AbortError') {
+                throw new DOMException('Aborted', 'AbortError');
+            }
+            throw e;
+        }
+        // An empty stream is an explicit extraction failure below, never a
+        // silent ''.
+        if (!text) text = null;
+    } else {
+        text = extractTextFromResponse(response);
+    }
+
     if (text === null) {
         warn('Could not extract text from profile response', {
             responseType: Array.isArray(response) ? 'array' : typeof response,
@@ -234,9 +296,10 @@ export const lastCustomEndpointDebug = {
     error: null,     // { message, status?, timestamp }
 };
 
-// Default endpoint timeout (5 min): requests are non-streaming, so this ceiling
-// covers the WHOLE generation — reasoning models and local backends can
-// legitimately take over 2 min. Overridable in tests only.
+// Default endpoint timeout (5 min): the timer spans fetch AND the body read
+// (streaming included), so this ceiling covers the WHOLE generation — reasoning
+// models and local backends can legitimately take over 2 min. Overridable in
+// tests only.
 let _customEndpointTimeoutMs = 300_000;
 export const _testSetCustomEndpointTimeout = (typeof process !== 'undefined' && process?.env?.NODE_TEST === '1')
     ? (ms) => { _customEndpointTimeoutMs = ms; }
@@ -321,6 +384,42 @@ export async function authorizeCustomEndpoint(raw, {
 }
 
 /**
+ * Drain an OpenAI-compatible SSE stream into the full response text. Streaming
+ * here is transport-only mechanics: the extension needs the COMPLETE text for
+ * parsing, so delta.content chunks are accumulated and returned as one string
+ * (this also keeps proxies behind Cloudflare from killing long non-streaming
+ * replies with 524). Tolerates the junk wild proxies emit: keep-alive
+ * comments (': ping'), usage chunks with empty choices, empty delta objects,
+ * reasoning_content deltas, non-JSON data lines. [DONE] is the terminator.
+ * Only a string choices[0].delta.content is consumed. A reader torn down by an
+ * abort rejects with AbortError on its own — propagates to the caller.
+ */
+async function readSseText(body) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let text = '';
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') return text;
+            let json;
+            try { json = JSON.parse(payload); } catch { continue; }
+            const delta = json?.choices?.[0]?.delta;
+            if (typeof delta?.content === 'string') text += delta.content;
+        }
+    }
+    return text;
+}
+
+/**
  * Generate text via a custom OpenAI-compatible endpoint.
  * Sends ONLY the provided system + user prompts — no preset, no ST formatting.
  *
@@ -357,8 +456,17 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
     for (const content of userMessages) messages.push({ role: 'user', content });
 
-    const body = { messages, stream: false };
+    // Streaming toggle + extra params. extraBody is validated BEFORE fetch:
+    // a "stream" key there is a hard error (the toggle owns the flag — a
+    // manual stream:true would break the SSE parse below), so a malformed
+    // setting must fail fast without touching the network. This path is a
+    // direct browser fetch with no ST server whitelist, so the mixin rides
+    // the body top-level.
+    const stream = state.settings.stream === true;
+    const extra = parseExtraBody(state.settings.extraBody);
+    const body = { messages, stream };
     if (model) body.model = model;
+    Object.assign(body, extra);
 
     // Structured output for OpenAI-compatible custom endpoints. 'custom' +
     // a Gemini-looking model id gets the loose (responseSchema-subset) variant.
@@ -379,12 +487,12 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
     // not sit in memory for the whole page lifetime.
     const debugFull = state.settings.debugMode === true;
     const requestPayload = debugFull
-        ? { url, model: model || '(default)', messages, stream: false }
+        ? { url, model: model || '(default)', messages, stream }
         : {
             url,
             model: model || '(default)',
             messageChars: messages.map(m => (m?.content || '').length),
-            stream: false,
+            stream,
         };
     lastCustomEndpointDebug.request = { ...requestPayload, timestamp: Date.now() };
     lastCustomEndpointDebug.response = null;
@@ -420,6 +528,41 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
             throw new Error(msg);
         }
         throw e;
+    }
+
+    // The timer stays live through the BODY read: with streaming, headers are
+    // only the start — the ceiling must cover the whole generation (a stalled
+    // mid-stream would otherwise hang the generation state forever). The
+    // finally below clears it once the body is fully consumed (or thrown).
+    let text;
+    let responseData = null;   // JSON path only — streaming has no whole-body object
+    try {
+        if (!response.ok) {
+            const errText = await response.text().catch(() => 'Unknown error');
+            const errMsg = `HTTP ${response.status}: ${errText.slice(0, 300)}`;
+            lastCustomEndpointDebug.error = { message: errMsg, status: response.status, timestamp: Date.now() };
+            throw new Error(tr('Custom endpoint {msg}', 'dscomments.connection.httpError').replace('{msg}', errMsg));
+        }
+
+        if (stream) {
+            text = await readSseText(response.body);
+            // An empty stream (all junk, only [DONE]) is an explicit extraction
+            // failure — never a silent ''.
+            if (!text) text = null;
+        } else {
+            responseData = await response.json();
+            text = extractTextFromResponse(responseData);
+        }
+    } catch (e) {
+        if (timedOut) {
+            const msg = tr('Endpoint did not respond within {sec} s', 'dscomments.connection.timeoutHttp')
+                .replace('{sec}', Math.round(_customEndpointTimeoutMs / 1000));
+            lastCustomEndpointDebug.error = { message: msg, timestamp: Date.now() };
+            throw new Error(msg);
+        }
+        // A user cancellation tears the reader down with AbortError — let it
+        // propagate; generator.js routes it to the "cancelled" state.
+        throw e;
     } finally {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onUserAbort);
@@ -427,21 +570,11 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
 
     const durationMs = Math.round(performance.now() - t0);
 
-    if (!response.ok) {
-        const errText = await response.text().catch(() => 'Unknown error');
-        const errMsg = `HTTP ${response.status}: ${errText.slice(0, 300)}`;
-        lastCustomEndpointDebug.error = { message: errMsg, status: response.status, timestamp: Date.now() };
-        throw new Error(tr('Custom endpoint {msg}', 'dscomments.connection.httpError').replace('{msg}', errMsg));
-    }
-
-    const data = await response.json();
-    const text = extractTextFromResponse(data);
-
     // ── Debug: log response ──
     lastCustomEndpointDebug.response = debugFull
         ? {
             status: response.status,
-            data,
+            data: responseData,
             text: text || '(empty)',
             timestamp: Date.now(),
             durationMs,
@@ -455,11 +588,19 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
 
     if (text !== null) return text;
 
+    // Streaming: every chunk was junk or carried no content — an explicit
+    // failure with its own message, never a silent ''. The JSON path keeps the
+    // legacy '' return (generator.js surfaces it as "empty response") so the
+    // toggle-OFF path stays byte-compatible with the pre-streaming behavior.
+    if (stream) {
+        throw new Error(tr('Custom endpoint returned a stream, but no text could be extracted from it.', 'dscomments.connection.streamNoText'));
+    }
+
     warn('Custom endpoint: could not extract text from response', {
-        responseType: Array.isArray(data) ? 'array' : typeof data,
-        hasContent: data?.content !== undefined,
-        hasChoices: Array.isArray(data?.choices),
-        hasCandidates: Array.isArray(data?.candidates),
+        responseType: Array.isArray(responseData) ? 'array' : typeof responseData,
+        hasContent: responseData?.content !== undefined,
+        hasChoices: Array.isArray(responseData?.choices),
+        hasCandidates: Array.isArray(responseData?.candidates),
     });
     return '';
 }

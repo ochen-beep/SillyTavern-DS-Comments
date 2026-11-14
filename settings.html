@@ -61,6 +61,18 @@
                 </div>
             </div>
 
+            <label class="dsc_toggle_row">
+                <input type="checkbox" id="dsc_stream" class="checkbox">
+                <span><b data-i18n="dscomments.settings.stream">Streaming (SSE)</b>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.streamHint">Proxies behind Cloudflare tear down long non-streaming replies (524). Turn off only if your gateway cannot do SSE.</small></span>
+            </label>
+
+            <div class="dsc_field_group">
+                <span class="dsc_field_label"><i class="fa-solid fa-code fa-fw"></i> <span data-i18n="dscomments.settings.extraBody">Extra request params (JSON)</span></span>
+                <input type="text" id="dsc_extrabody" class="dsc_input" placeholder='{"reasoning_effort":"none"}' autocomplete="off" spellcheck="false">
+                <small class="dsc_hint" data-i18n="dscomments.settings.extraBodyHint">Merged into the request body for both sources. The "stream" key is forbidden — it is owned by the Streaming toggle.</small>
+            </div>
+
             <div class="dsc_field_group dsc_field_num">
                 <span class="dsc_field_label"><span data-i18n="dscomments.settings.count">Comments per generation</span></span>
                 <input type="number" id="dsc_count" class="dsc_input dsc_input_num" min="1" max="100" value="5">

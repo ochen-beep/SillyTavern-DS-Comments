@@ -54,6 +54,16 @@ export const defaultSettings = Object.freeze({
     customEndpoint: '',
     customModel: '',
 
+    // SSE streaming for generation requests. Transport-only mechanics: the
+    // extension needs the FULL text for parsing, so chunks are accumulated and
+    // returned as one string — streaming just keeps proxies (Cloudflare 524 on
+    // long non-streaming replies) and stream-only gateways happy.
+    stream: true,
+    // "Extra params (JSON)": user JSON merged into the request body of BOTH
+    // transports (e.g. {"reasoning_effort":"none"}). Validated at request time;
+    // the "stream" key is rejected there — the toggle above owns it.
+    extraBody: '',
+
     // window invocation control: 'bar' (quick-reply bar button) | 'floating' (draggable FAB) | 'both'
     launcherMode: 'bar',
 
@@ -474,6 +484,10 @@ export async function loadSettings() {
     state.settings.mediaMemes = state.settings.mediaMemes === true;
     state.settings.reactionEmotes = state.settings.reactionEmotes === true;
     state.settings.emoteSetId = String(state.settings.emoteSetId || '').trim();
+    // Streaming: ON unless EXPLICITLY false — old saves without the key
+    // (and any garbage value) switch to the streaming path.
+    state.settings.stream = state.settings.stream !== false;
+    state.settings.extraBody = String(state.settings.extraBody ?? '').trim();
     if (!state.settings.soundFiles) state.settings.soundFiles = {};
     if (!state.settings.soundId) state.settings.soundId = 'default';
 
