@@ -133,6 +133,11 @@ test('meme URL building: 1/2/3-line templates, single encoding', () => {
         buildMemeUrl(cmm, { template: 'cmm', top: 'me', bottom: 'ignored' }),
         'https://api.memegen.link/images/cmm/me.png',
     );
+    // 1-line template with an empty top falls back to the bottom caption
+    assert.equal(
+        buildMemeUrl(cmm, { template: 'cmm', top: '', bottom: 'sign text' }),
+        'https://api.memegen.link/images/cmm/sign_text.png',
+    );
     // Cyrillic is percent-encoded exactly once and switches to the unicode font
     // (memegen's impact has no cyrillic glyphs and silently drops the caption)
     const url = buildMemeUrl(drake, { template: 'drake', top: 'кот', bottom: '' });

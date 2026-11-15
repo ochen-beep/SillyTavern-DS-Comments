@@ -199,7 +199,7 @@ export function buildMemeUrl(template, spec) {
     const segments = Array(lines).fill('');
     const placement = template.id === 'ds' ? DS_PLACEMENT : null;
     if (lines === 1) {
-        segments[0] = top;
+        segments[0] = top || bottom;   // a bottom-only caption still renders
     } else if (placement && placement[0] < lines && placement[1] < lines) {
         segments[placement[0]] = top;
         segments[placement[1]] = bottom;
