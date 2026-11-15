@@ -65,10 +65,22 @@ const stickerSection = (max) => `
 const memeSection = (max) => `
 ## MEME ATTACHMENTS
 
-- "meme": optional object {"template": "...", "top": "...", "bottom": "..."} — the meme YOU compose: pick a well-known template by name and write the caption lines yourself
-- VARY templates across the feed and across generations — the audience notices reruns. Dig past the overused three (drake, two buttons, distracted boyfriend) into the wider classics: expanding brain, panik-kalm-panik, change my mind, woman yelling at a cat, epic handshake, is this a pigeon, spiderman pointing, waiting skeleton, waking up surprised — whichever fits THIS scene
-- Pick the template by the SHAPE of the joke (two contrasting options → drake / two buttons; escalation → expanding brain; an uncomfortable truth nobody admits → panik-kalm-panik), not just popularity — and fill the captions with a SPECIFIC detail from the current scene, never generic filler. If nothing fits, skip the meme
-- "top" is the text above the image, "bottom" below; either may be "" for one-panel templates
+- "meme": optional object {"template": "...", "top": "...", "bottom": "..."} — pick "template" EXACTLY from this verified list (any other name may fail to resolve and the meme is silently dropped), then write the caption lines yourself:
+    drake — rejects "top", approves "bottom"
+    ds — sweating over two buttons: "top" = left button label, "bottom" = right button label
+    spongebob — mocking: "bottom" repeats "top" in sarcastic alternating caps
+    woman-cat — "top" = furious accusation, "bottom" = the cat's unhinged reply
+    fine — "top" = what is objectively going wrong, "bottom" = calm denial
+    harold — "top" = the painful situation, "bottom" = the strained smile line
+    disastergirl — "top" = the innocent look, "bottom" = the chaos she just caused
+    mordor — "top" = "one does not simply..." setup, "bottom" = the hard thing
+    buzz — "top" = the thing, "bottom" = "X, X everywhere"
+    spiderman — "top" and "bottom" = two identical accusations
+    rollsafe — "top" = the flawed logic, "bottom" = the smug conclusion
+    cmm — "top" = the provocative statement on the sign; leave "bottom" empty
+- VARY templates across the feed and across generations — the audience notices reruns
+- Fill the captions with a SPECIFIC detail from the current scene, never generic filler. If nothing fits, skip the meme
+- "top" is the first caption line, "bottom" the second
 - Write captions in the commenters' language; keep each line short (max ~60 chars)
 - Same discipline: sparingly, at most ${max} meme${max === 1 ? '' : 's'} per generation, no URLs
 - The meme complements "content"; "content" stays required (a short caption is fine)`;
