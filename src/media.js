@@ -87,7 +87,9 @@ async function fetchMemeTemplates(signal) {
     if (_memeTemplates && Date.now() - _memeTemplatesTs < MEME_TEMPLATES_TTL_MS) {
         return _memeTemplates;
     }
-    const response = await fetchWithTimeout(MEMEGEN_TEMPLATES_URL, { method: 'GET', signal });
+    // /templates/ is routinely slow on flaky networks (>40s observed live);
+    // the 8s default aborts every meme for the whole session.
+    const response = await fetchWithTimeout(MEMEGEN_TEMPLATES_URL, { method: 'GET', signal, timeoutMs: 30000 });
     if (!response.ok) {
         const err = new Error(`memegen templates: HTTP ${response.status}`);
         err.diagnostic = 'templates_unavailable';
