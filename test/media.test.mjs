@@ -83,6 +83,7 @@ const TEMPLATES = [
     { id: 'ds', name: 'Daily Struggle', keywords: ['two buttons'], lines: 2 },
     { id: 'db', name: 'Distracted Boyfriend', keywords: [], lines: 3 },
     { id: 'cmm', name: 'Change My Mind', keywords: [], lines: 1 },
+    { id: 'sk', name: 'Skeptical Third World Kid', keywords: [], lines: 2 },
 ];
 
 test('meme template resolution: alias → canonical id, then id/name/keyword fuzzy', () => {
@@ -96,6 +97,11 @@ test('meme template resolution: alias → canonical id, then id/name/keyword fuz
     assert.equal(resolveMemeTemplate('drake hotline bling', TEMPLATES).id, 'drake');
     // prefix: "distract" → "db" (Distracted Boyfriend)
     assert.equal(resolveMemeTemplate('distract', TEMPLATES).id, 'db');
+    // short fragments must not substring-collide with short template ids
+    // ("waitingskeleton" contains "sk", "chucknorris" contains "ch")
+    assert.equal(resolveMemeTemplate('waiting skeleton', TEMPLATES), null);
+    assert.equal(resolveMemeTemplate('pikachu', TEMPLATES), null);
+    assert.equal(resolveMemeTemplate('me', TEMPLATES), null);
     assert.equal(resolveMemeTemplate('nonexistent-template', TEMPLATES), null);
     assert.equal(resolveMemeTemplate('', TEMPLATES), null);
     assert.equal(resolveMemeTemplate('drake', []), null);

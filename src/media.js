@@ -162,9 +162,15 @@ export function resolveMemeTemplate(hint, templates) {
     for (const pass of ['exact', 'prefix', 'substring']) {
         for (const t of templates) {
             const ks = keys(t);
-            const hit = pass === 'exact' ? ks.some(k => k === needle)
-                : pass === 'prefix' ? ks.some(k => k.startsWith(needle))
-                : ks.some(k => k.includes(needle) || needle.includes(k));
+        const hit = pass === 'exact' ? ks.some(k => k === needle)
+            : pass === 'prefix' ? ks.some(k => k.startsWith(needle))
+            // Short fragments collide catastrophically in both directions:
+            // "sk" hides inside "waiting skeleton", "ch" inside "chuck norris",
+            // "me" inside "men in black" — each resolving to a totally
+            // different meme. Substring matching needs a fragment long enough
+            // to be intentional.
+            : ks.some(k => (needle.length >= 5 && k.includes(needle))
+                || (k.length >= 4 && needle.includes(k)));
             if (hit) return t;
         }
     }
