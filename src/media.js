@@ -161,11 +161,19 @@ export function resolveMemeTemplate(hint, templates) {
         const t = byCanonical(aliased);
         if (t) return t;
     }
+    // 2. A template id beats every name/keyword match: the live API lets
+    // several templates share a keyword ("spiderman" is both an id and a
+    // keyword of Peter Parker's Glasses), and list order would decide —
+    // the model's explicit id must win.
+    const byId = templates.find(t => _normMemeName(t.id) === needle);
+    if (byId) return byId;
     for (const pass of ['exact', 'prefix', 'substring']) {
         for (const t of templates) {
             const ks = keys(t);
         const hit = pass === 'exact' ? ks.some(k => k === needle)
-            : pass === 'prefix' ? ks.some(k => k.startsWith(needle))
+            // A 2-char hint prefix-matches unrelated names ("me" →
+            // "meninblack"); only ids resolve that short.
+            : pass === 'prefix' ? needle.length >= 3 && ks.some(k => k.startsWith(needle))
             // Short fragments collide catastrophically in both directions:
             // "sk" hides inside "waiting skeleton", "ch" inside "chuck norris",
             // "me" inside "men in black" — each resolving to a totally
