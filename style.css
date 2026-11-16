@@ -743,3 +743,22 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
    chat-select, drawer combos). */
 /* unresolved media request in a media-only comment — bracketed degradation */
 .dsc_media_fallback { opacity: 0.55; font-style: italic; }
+
+/* memegen cold-renders new caption combos server-side: a pending box shows a
+   quiet pulse instead of an empty frame; a stalled box (watchdog gave up in
+   renderer.js) degrades to its caption text via dsc_media_fallback. */
+.dsc_gif_loading::after {
+    content: "…";
+    display: block;
+    min-width: 72px;
+    padding: 16px;
+    text-align: center;
+    color: var(--dsc-text);
+    animation: dsc_loading_pulse 1.4s ease-in-out infinite;
+}
+.dsc_gif_loading.dsc_gif_sticker::after { background: transparent; }
+.dsc_gif_stalled { width: auto; padding: 8px 12px; line-height: normal; }
+@keyframes dsc_loading_pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}

@@ -27,7 +27,7 @@ function makeEl() {
         setAttribute(k, v) { this._attrs[k] = String(v); },
         getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; },
         appendChild(child) { (this.children ??= []).push(child); },
-        classList: { add() {}, },
+        classList: { add() {}, remove() {}, },
         className: '',
         alt: '',
         src: '',
@@ -40,6 +40,14 @@ function makeEl() {
         close() { this.open = false; },
     };
 }
+// setInterval/clearInterval registry: the renderer media watchdog registers
+// timers during upgrades. Tests stay synchronous — _dscTickIntervals() fires
+// every live handler once (one tick = one watchdog period).
+globalThis._dscIntervals = [];
+globalThis.setInterval = (fn) => { globalThis._dscIntervals.push(fn); return globalThis._dscIntervals.length; };
+globalThis.clearInterval = (id) => { globalThis._dscIntervals[id - 1] = null; };
+globalThis._dscTickIntervals = () => { for (const fn of globalThis._dscIntervals) fn?.(); };
+
 globalThis.document = {
     createElement: () => makeEl(),
     getElementById: () => null,

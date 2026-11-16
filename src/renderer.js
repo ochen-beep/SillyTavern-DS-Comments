@@ -117,6 +117,37 @@ export function upgradeMediaPlaceholders(root) {
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
             img.src = rawUrl;
             img.addEventListener('error', () => trace(`media failed to load: ${rawUrl}`));
+            // memegen renders every NEW caption combo server-side — sometimes
+            // for minutes — and a stalled transfer reserves an empty box
+            // forever. The loading class keeps the box honest while waiting;
+            // the watchdog re-requests the same stateless URL (a finished
+            // render is cached and returns instantly) and, after three
+            // stalls, degrades the box to the caption text — the joke
+            // survives even when the render never lands. The stored feed HTML
+            // keeps the placeholder, so a later re-render retries fresh.
+            node.classList?.add?.('dsc_gif_loading');
+            img.addEventListener('load', () => node.classList?.remove?.('dsc_gif_loading'), { once: true });
+            let stalls = 0;
+            const watchdog = setInterval(() => {
+                if (img.complete && img.naturalWidth > 0) {
+                    clearInterval(watchdog);
+                    node.classList?.remove?.('dsc_gif_loading');
+                    return;
+                }
+                stalls++;
+                if (stalls >= 3) {
+                    clearInterval(watchdog);
+                    node.classList?.remove?.('dsc_gif_loading');
+                    node.classList?.add?.('dsc_gif_stalled');
+                    const caption = document.createElement('span');
+                    caption.className = 'dsc_media_fallback';
+                    caption.textContent = img.alt || '';
+                    node.textContent = '';
+                    node.appendChild?.(caption);
+                    return;
+                }
+                img.src = rawUrl;
+            }, 30000);
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);
