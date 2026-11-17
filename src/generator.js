@@ -8,7 +8,7 @@
  * source block as its own user message (see assemblePrompt).
  */
 
-import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastCommentablePost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag, getGiphyKey, notifyUser } from './core.js';
+import { state, getCtx, BASE_URL, resolveSTMacro, buildPrompt, extractText, trace, warn, error, tr, escapeHtml, isCommentaryGenerationEligible, resolveLastCommentablePost, beginGenerationEpoch, isEpochCurrent, pushRestoreLog, setLastFpDiag, getLastFpDiag, getGiphyKey, notifyUser, fetchWithTimeout } from './core.js';
 import { refreshEmoteManifest, getEmoteCodes } from './emotes.js';
 import { planPostImages, loadImageParts } from './images.js';
 import { PROMPT_CONTRACT, buildContract } from './prompt-contract.js';
@@ -27,6 +27,17 @@ import { playNotificationSound } from './sound.js';
 const _builtinPromptCache = {};
 
 /**
+ * Detect an OS sleep mid-flight: performance.now() freezes while the host is
+ * suspended, Date.now() (wall clock) keeps ticking — a gap far beyond any
+ * legitimate stall means the machine slept and timers/fetches froze with it.
+ * Diagnostics only: after wake everything self-heals (timers mature, fetches
+ * re-resolve), so the generation must continue, not abort.
+ */
+function sleptSince(wallAt, monotonicAt, thresholdMs = 180_000) {
+    return (Date.now() - wallAt) - (performance.now() - monotonicAt) > thresholdMs;
+}
+
+/**
  * Load the active prompt template text (raw, macros NOT yet substituted).
  *
  * Resolution order (edit-on-place):
@@ -38,7 +49,10 @@ const _builtinPromptCache = {};
  */
 async function fetchBuiltinPrompt(name) {
     if (_builtinPromptCache[name]) return _builtinPromptCache[name];
-    const resp = await fetch(`${BASE_URL}/chat-styles/${name}.md`);
+    // Hard timeout like every other CDN fetch — a hung same-origin request must
+    // not stall the style phase indefinitely (the caller's fallback ladder
+    // treats this exactly like an HTTP error).
+    const resp = await fetchWithTimeout(`${BASE_URL}/chat-styles/${name}.md`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const text = await resp.text();
     _builtinPromptCache[name] = text;
@@ -688,6 +702,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         noSaveMode: !!settings.noSaveMode,
     });
     const generationStartedAt = performance.now();
+    const wallStartedAt = Date.now();
     const phaseMs = {};
     let outcome = 'running';
     const markPhase = (name, startedAt) => { phaseMs[name] = Math.round(performance.now() - startedAt); };
@@ -755,6 +770,11 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         }
         const stylePrompt = await loadStylePrompt();
         markPhase('style', phaseStartedAt);
+        // Diagnostics only — a wall-clock gap here means the host slept mid-phase
+        // (timers freeze with it), explaining an absurd styleMs in the dump.
+        if (sleptSince(wallStartedAt, generationStartedAt)) {
+            recordEvent('warn', `event=host_slept target=#${resolvedMsgId}[${resolvedSwipeIdx}] phaseMs=${phaseMs.style || 0}`);
+        }
         if (!isEpochCurrent(epoch)) {
             trace('generateFeed: discarding stale result (epoch changed during style load)');
             recordStale('style-load');
@@ -1101,6 +1121,11 @@ export const _testGenerateFeed = typeof process !== 'undefined' && process?.env?
             _testFakeApi = null;
         }
     }
+    : undefined;
+
+// Test-only: expose the sleep detector (NODE_TEST guard, same as above).
+export const _testSleptSince = typeof process !== 'undefined' && process?.env?.NODE_TEST === '1'
+    ? sleptSince
     : undefined;
 
 // Test-only: simulate the generation `finally` cleanup tail without running an

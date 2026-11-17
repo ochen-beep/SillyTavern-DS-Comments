@@ -19,7 +19,7 @@ import { setCurrentPost } from '../src/cache.js';
 import { _seedSaveCache, _resetFeedFileStore, getFeedSlot } from '../src/feed-file-store.js';
 import { buildGenerationFingerprint, buildGenerationFingerprintInput, getChatLoreConfig } from '../src/lorebooks.js';
 import { createSettingsLorebookLifecycle } from '../src/ui/settings-sync.js';
-import { _testBuildChatHistory, _testBuildLoreScanInput, _testBuildPastCommentParts, _testGenerateFeed, getCurrentGenerationFingerprint, loadStylePrompt } from '../src/generator.js';
+import { _testBuildChatHistory, _testBuildLoreScanInput, _testBuildPastCommentParts, _testGenerateFeed, _testSleptSince, getCurrentGenerationFingerprint, loadStylePrompt } from '../src/generator.js';
 
 const ai = (mes, swipe_id = 0, swipes) =>
     swipes ? { mes, is_user: false, is_system: false, is_hidden: false, swipe_id, swipes }
@@ -45,10 +45,20 @@ test('buildChatHistory: anchor reads msg.swipes[idx] when idx !== swipe_id', () 
     assert.ok(!html.includes('active swipe 0 text'), 'the non-requested active-swipe text must not appear in the anchor');
 });
 
+test('sleptSince: flags a wall-clock gap (OS sleep), passes a normal stall', () => {
+    // Both baselines must come from the same instant (as in generateFeed).
+    const monotonicNow = performance.now();
+    const wallNow = Date.now();
+    // Normal: wall and monotonic advance in lockstep — even a long stall.
+    assert.equal(_testSleptSince(wallNow, monotonicNow, 60_000), false);
+    assert.equal(_testSleptSince(wallNow - 90_000, monotonicNow - 90_000, 60_000), false); // 90s legit stall, clocks agree
+    // Sleep: wall clock jumped ~5 min ahead of the frozen monotonic clock.
+    assert.equal(_testSleptSince(wallNow - 5 * 60_000, monotonicNow - 90_000, 60_000), true);
+});
+
 test('buildChatHistory: anchor reads msg.mes when idx === swipe_id (no swipes array)', () => {
     globalThis._stCtx.chat = [ai('only mes text', 0)];
-    const html = _testBuildChatHistory(0, 0);
-    assert.ok(html.includes('only mes text'));
+    const html = _testBuildChatHistory(0, 0);    assert.ok(html.includes('only mes text'));
 });
 
 test('buildChatHistory: idx out of swipes range falls back to msg.mes', () => {
