@@ -38,17 +38,16 @@ test('user 7TV set overrides builtin codes with the same name', () => {
     assert.equal(getEmoteUrl('KEKW'), 'https://cdn.7tv.app/emote/user/2x.webp');
 });
 
-test('getEmoteCodes: sorted, deterministic spread under the cap', () => {
+test('getEmoteCodes: full pack, sorted', () => {
     const big = {};
     for (let i = 0; i < 60; i++) big[`Emote${String(i).padStart(2, '0')}`] = `https://cdn/u/${i}.webp`;
     _setEmoteManifest({ builtin: big });
-    const codes = getEmoteCodes(48);
-    assert.equal(codes.length, 48);
+    const codes = getEmoteCodes();
+    assert.equal(codes.length, 60);
     assert.deepEqual(codes, [...codes].sort());
-    assert.ok(codes.includes('Emote00') && codes.includes('Emote59'), 'spread covers both ends');
     // small packs pass through whole
     _setEmoteManifest({ builtin: { monkaS: 'x' } });
-    assert.deepEqual(getEmoteCodes(48), ['monkaS']);
+    assert.deepEqual(getEmoteCodes(), ['monkaS']);
 });
 
 test('refreshEmoteManifest: reacts to settings and fetches the 7TV set', async () => {

@@ -61,6 +61,18 @@
                 </div>
             </div>
 
+            <label class="dsc_toggle_row">
+                <input type="checkbox" id="dsc_stream" class="checkbox">
+                <span><b data-i18n="dscomments.settings.stream">Streaming (SSE)</b>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.streamHint">Proxies behind Cloudflare tear down long non-streaming replies (524). Turn off only if your gateway cannot do SSE.</small></span>
+            </label>
+
+            <div class="dsc_field_group">
+                <span class="dsc_field_label"><i class="fa-solid fa-code fa-fw"></i> <span data-i18n="dscomments.settings.extraBody">Extra request params (JSON)</span></span>
+                <input type="text" id="dsc_extrabody" class="dsc_input" placeholder='{"reasoning_effort":"none"}' autocomplete="off" spellcheck="false">
+                <small class="dsc_hint" data-i18n="dscomments.settings.extraBodyHint">Merged into the request body for both sources. The "stream" key is forbidden — it is owned by the Streaming toggle.</small>
+            </div>
+
             <div class="dsc_field_group dsc_field_num">
                 <span class="dsc_field_label"><span data-i18n="dscomments.settings.count">Comments per generation</span></span>
                 <input type="number" id="dsc_count" class="dsc_input dsc_input_num" min="1" max="100" value="5">
@@ -129,14 +141,14 @@
             <div class="dsc_field_group">
                 <span class="dsc_field_label"><i class="fa-solid fa-list-check fa-fw"></i> <span data-i18n="dscomments.settings.context">Context</span></span>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_hist" class="checkbox"> <span data-i18n="dscomments.settings.history">Chat history</span></label>
-                <div id="dsc_depth_group" hidden>
+                <div id="dsc_depth_group" class="dsc_field_num" hidden>
                     <span class="dsc_field_label" data-i18n="dscomments.settings.depth">Context depth</span>
                     <input type="number" id="dsc_depth" class="dsc_input dsc_input_num" min="2" max="50" value="4">
                 </div>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_persona" class="checkbox"> <span data-i18n="dscomments.settings.persona">Persona</span></label>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_chardesc" class="checkbox"> <span data-i18n="dscomments.settings.character">Character description</span></label>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_pastcom" class="checkbox"> <span data-i18n="dscomments.settings.pastComments">Past comment threads</span></label>
-                <div id="dsc_pastcom_group" hidden>
+                <div id="dsc_pastcom_group" class="dsc_field_num" hidden>
                     <span class="dsc_field_label" data-i18n="dscomments.settings.pastCommentsDepth">Past posts included</span>
                     <input type="number" id="dsc_pastcom_depth" class="dsc_input dsc_input_num" min="1" max="10" value="2">
                 </div>
@@ -144,7 +156,7 @@
                     <span class="dsc_field_label"><i class="fa-solid fa-image fa-fw"></i> <span data-i18n="dscomments.settings.images">Post images</span></span>
                     <select id="dsc_images" class="dsc_select">
                         <option value="off" data-i18n="dscomments.settings.imagesOff">Off</option>
-                        <option value="auto" data-i18n="dscomments.settings.imagesAuto">Auto (multimodal models)</option>
+                        <option value="auto" data-i18n="dscomments.settings.imagesAuto">Auto (multimodal)</option>
                         <option value="always" data-i18n="dscomments.settings.imagesAlways">Always</option>
                     </select>
                 </div>
@@ -235,7 +247,7 @@
                 <span class="dsc_field_label"><span data-i18n="dscomments.settings.structured">Structured output</span></span>
                 <select id="dsc_structured" class="dsc_select">
                     <option value="off" data-i18n="dscomments.settings.structuredOff">Off</option>
-                    <option value="auto" data-i18n="dscomments.settings.structuredAuto">Auto (supported sources)</option>
+                    <option value="auto" data-i18n="dscomments.settings.structuredAuto">Auto (supported)</option>
                     <option value="always" data-i18n="dscomments.settings.structuredAlways">Always</option>
                 </select>
                 <small class="dsc_hint" data-i18n="dscomments.settings.structuredHint">Enforces the JSON contract at the API level: the model must return the comments object, so refusals and broken arrays largely disappear. Replaces the assistant-role jailbreak on supported sources.</small>
@@ -246,7 +258,7 @@
                 <span><b data-i18n="dscomments.settings.jailbreak">Jailbreak block</b></span></label>
             <div id="dsc_jb_body" hidden>
                 <div class="dsc_field_group">
-                    <span class="dsc_field_label" data-i18n="dscomments.settings.role">Роль</span>
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.role">Role</span>
                     <select id="dsc_jb_role" class="dsc_select"><option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option></select>
                 </div>
                 <div class="dsc_field_group dsc_field_group_separated">

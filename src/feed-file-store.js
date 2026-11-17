@@ -25,8 +25,10 @@
  * In-memory mirror: loaded once per CHAT_CHANGED, all later reads are
  * synchronous (the restore paths in cache.js must stay sync after their
  * pre-await fast path). Mirror is the single source of truth for the session;
- * every mutation schedules an immediate full-file upload through a promise
- * chain (pinned-store pattern: one mutation → one durable write, in order).
+ * every mutation coalesces into ONE trailing full-file upload through a
+ * promise chain (in order) — the file is re-uploaded whole per burst, not per
+ * keystroke of mutations. Page-hide, teardown and clear paths flush the
+ * pending write via flushPendingUpload() so nothing is lost or resurrected.
  */
 
 import { state, getCtx, trace, warn, error, tr, META_KEY, observePersistence, registerFeedStoreSnapshot, registerFeedStoreDiagnostics } from './core.js';
@@ -335,7 +337,10 @@ export async function loadFeedStore() {
     // store instead of leaving the new guid file empty.
     if (minted && fallbackDoc) {
         recordEvent('log', `event=feed_fallback_migrated chat=${ctx.chatId} from=${fallbackKey} to=${mainKey} entries=${Object.keys(_mirror.entries).length}`);
-        _writeChain = schedulePersist({ ctx, key: mainKey, mirror: _mirror })
+        // Copy→retire rides the copy's own promise (resolves once the upload
+        // lands). The retired file is a different file than every later
+        // upload, so it need not own the chain tail.
+        schedulePersist({ ctx, key: mainKey, mirror: _mirror })
             .then(ok => {
                 if (!ok) return;
                 return deleteUserFile(fallbackKey).catch(cause => {
@@ -356,33 +361,78 @@ export async function loadFeedStore() {
     if (pruned > 0) schedulePersist({ ctx, key: mainKey, mirror: _mirror });
 }
 
-// Serialized full-file write (pinned-store chain pattern).
-function schedulePersist({ ctx = getCtx(), key = _loadedKey ?? chatFileKey(ctx), mirror = _mirror } = {}) {
-    const entries = mirror?.entries ?? {};
+// Full-file write, coalesced: rapid mutations (regeneration bursts, GC after
+// structural edits) share one trailing upload of the LATEST mirror state
+// instead of re-uploading the whole file per mutation. The promise chain still
+// serializes the actual uploads; callers that must observe durability
+// (page-hide, clear, fork isolation) force the pending write through
+// flushPendingUpload().
+//
+// Deadlock discipline: the upload chains on the chain captured AT SCHEDULE
+// time (pending.chain), while _writeChain is advanced to the pending promise.
+// A consumer may attach follow-ups to the returned promise without the upload
+// ever waiting on a chain that depends on the upload itself.
+const FEED_WRITE_DEBOUNCE_MS = 750;
+let _pendingUploadTimer = 0;
+let _pendingUpload = null;   // { ctx, key, mirror, resolve, promise, chain }
+
+function runUpload(pending) {
+    const entries = pending.mirror?.entries ?? {};
     const doc = { v: STORE_VERSION, entries: { ...entries } };
-    setStorageDiag('write', { loaded: !!mirror, result: 'queued', file: key, entryCount: Object.keys(doc.entries).length, error: null });
-    recordEvent('log', `event=feed_write chat=${ctx?.chatId || 'none'} file=${key} result=queued entries=${Object.keys(doc.entries).length}`);
-    const job = _writeChain
-        .then(() => uploadUserFile(key, textToBase64(JSON.stringify(doc))))
+    const job = pending.chain
+        .then(() => uploadUserFile(pending.key, textToBase64(JSON.stringify(doc))))
         .then(() => {
-            trace(`feed-file-store: wrote ${key} (${Object.keys(doc.entries).length} entries)`);
-            setStorageDiag('write', { loaded: true, result: 'success', file: key, entryCount: Object.keys(doc.entries).length, error: null });
-            recordEvent('log', `event=feed_write chat=${ctx?.chatId || 'none'} file=${key} result=success entries=${Object.keys(doc.entries).length}`);
+            trace(`feed-file-store: wrote ${pending.key} (${Object.keys(doc.entries).length} entries)`);
+            setStorageDiag('write', { loaded: true, result: 'success', file: pending.key, entryCount: Object.keys(doc.entries).length, error: null });
+            recordEvent('log', `event=feed_write chat=${pending.ctx?.chatId || 'none'} file=${pending.key} result=success entries=${Object.keys(doc.entries).length}`);
+            pending.resolve(true);
             return true;
         })
         .catch(cause => {
             error('feed-file-store: upload failed:', cause);
-            setStorageDiag('write', { loaded: !!mirror, result: 'error', file: key, entryCount: Object.keys(doc.entries).length, error: String(cause?.message || cause) });
-            recordEvent('error', `event=feed_write chat=${ctx?.chatId || 'none'} file=${key} result=error entries=${Object.keys(doc.entries).length} error=${cause?.message || cause}`);
+            setStorageDiag('write', { loaded: !!pending.mirror, result: 'error', file: pending.key, entryCount: Object.keys(doc.entries).length, error: String(cause?.message || cause) });
+            recordEvent('error', `event=feed_write chat=${pending.ctx?.chatId || 'none'} file=${pending.key} result=error entries=${Object.keys(doc.entries).length} error=${cause?.message || cause}`);
             notifyStoreFailure();
+            pending.resolve(false);
             return false;
         });
-    _writeChain = job;
     return job;
 }
 
+/** Fire any pending coalesced write now; resolves when the store is durable. */
+function flushPendingUpload() {
+    if (_pendingUploadTimer) { clearTimeout(_pendingUploadTimer); _pendingUploadTimer = 0; }
+    const pending = _pendingUpload;
+    _pendingUpload = null;
+    if (!pending) return _writeChain;
+    return runUpload(pending);
+}
+
+function schedulePersist({ ctx = getCtx(), key = _loadedKey ?? chatFileKey(ctx), mirror = _mirror } = {}) {
+    if (_pendingUpload && _pendingUpload.key === key) {
+        // Coalesce: keep the earliest promise and schedule-time chain, refresh
+        // the live mirror/ctx — the timer serializes the LATEST state.
+        _pendingUpload.ctx = ctx;
+        _pendingUpload.mirror = mirror;
+        if (_pendingUploadTimer) clearTimeout(_pendingUploadTimer);
+        _pendingUploadTimer = setTimeout(flushPendingUpload, FEED_WRITE_DEBOUNCE_MS);
+        setStorageDiag('write', { loaded: !!mirror, result: 'queued', file: key, entryCount: Object.keys(mirror?.entries ?? {}).length, error: null });
+        recordEvent('log', `event=feed_write chat=${ctx?.chatId || 'none'} file=${key} result=queued entries=${Object.keys(mirror?.entries ?? {}).length}`);
+        return _pendingUpload.promise;
+    }
+    if (_pendingUpload) flushPendingUpload();   // key changed (fork / chat switch) → land the previous file first
+    let resolve;
+    const promise = new Promise(r => { resolve = r; });
+    _pendingUpload = { ctx, key, mirror, resolve, promise, chain: _writeChain };
+    _writeChain = promise;
+    _pendingUploadTimer = setTimeout(flushPendingUpload, FEED_WRITE_DEBOUNCE_MS);
+    setStorageDiag('write', { loaded: !!mirror, result: 'queued', file: key, entryCount: Object.keys(mirror?.entries ?? {}).length, error: null });
+    recordEvent('log', `event=feed_write chat=${ctx?.chatId || 'none'} file=${key} result=queued entries=${Object.keys(mirror?.entries ?? {}).length}`);
+    return promise;
+}
+
 export function flushFeedStoreWrites() {
-    return _writeChain;
+    return flushPendingUpload().then(() => _writeChain);
 }
 
 function notifyStoreFailure() {
@@ -556,8 +606,9 @@ export function clearFeedFile() {
     const key = _loadedKey ?? chatFileKey(ctx);
     setStorageDiag('delete', { loaded: true, result: 'queued', file: key, entryCount: 0, error: null });
     recordEvent('log', `event=feed_delete chat=${ctx?.chatId || 'none'} file=${key} result=queued`);
-    // Delete via the chain so a queued write cannot resurrect the file after.
-    const job = _writeChain
+    // Land any coalesced write BEFORE the delete, so a pending upload firing
+    // after the removal cannot resurrect the file.
+    const job = flushPendingUpload()
         .then(() => deleteUserFile(key))
         .then(() => {
             trace(`feed-file-store: deleted ${key}`);
@@ -708,6 +759,8 @@ export function getMirrorRevision() {
 // ── Test-only surface ──
 
 export function _resetFeedFileStore() {
+    if (_pendingUploadTimer) { clearTimeout(_pendingUploadTimer); _pendingUploadTimer = 0; }
+    _pendingUpload = null;
     _mirror = null;
     _loadedKey = null;
     _loadedChatId = null;
@@ -762,4 +815,6 @@ export function _seedSaveCache(postsByMsgId, chat = getCtx()?.chat) {
 
 export const _STORE_VERSION = STORE_VERSION;
 export const _getLoadedKey = () => _loadedKey;
-export const _flushWriteChain = () => _writeChain;
+// Tests sync on this after setFeedSlot; with coalescing the upload only enters
+// the chain when the pending write fires, so flush it first.
+export const _flushWriteChain = () => flushPendingUpload().then(() => _writeChain);

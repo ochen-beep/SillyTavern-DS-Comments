@@ -19,6 +19,8 @@ const FIELD_MAP = {
     dsc_profile:        { prop: 'profileId',                   type: 'select' },
     dsc_endpoint:       { prop: 'customEndpoint',              type: 'text' },
     dsc_model:          { prop: 'customModel',                 type: 'text' },
+    dsc_stream:         { prop: 'stream',                      type: 'checkbox' },
+    dsc_extrabody:      { prop: 'extraBody',                   type: 'text' },
     dsc_apikey:         { prop: '__apikey',                    type: 'password' }, // localforage-backed
     dsc_count:          { prop: 'userCount',                   type: 'number' },
     dsc_depth:          { prop: 'contextDepth',                type: 'number' },
@@ -98,6 +100,9 @@ export function createSettingsLorebookLifecycle({
                     runtimeState.generationInProgress = false;
                     runtimeState.generationTarget = null;
                     runtimeState.generationObservedTarget = null;
+                    // Same abort semantics as index.js abortActiveGeneration: a
+                    // parked queue entry must not outlive the invalidation.
+                    runtimeState.queuedGeneration = null;
                     persistConfig(config, ctx);
                 },
             });
@@ -333,9 +338,11 @@ let _promptEditorReq = 0;
 // ── Prompt templates (edit-on-place, stored in extension settings) ──
 
 // Built-in templates: served from /chat-styles/*.md, cannot be deleted or reset.
+// 'test' was merged into 'main' (2026-11-17); old-'main' vibe lives in
+// docs/prompt-template-main-backup.md. A still-selected 'test' shows as
+// "not found" in the picker and falls back to 'main' at generation time.
 const BUILTIN_TEMPLATES = {
     main: 'main',
-    test: 'test',
 };
 export const isBuiltinTemplate = (name) => Object.prototype.hasOwnProperty.call(BUILTIN_TEMPLATES, name);
 const _builtinCache = {};

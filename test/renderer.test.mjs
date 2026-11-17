@@ -3,8 +3,8 @@
  * DS Comments — renderer unit tests.
  *
  * renderMessages: HTML generation from parsed messages. Checks
- * mini-markdown (bold/italic/code/strike/br), reply-bar, reactions (max 6,
- * count omitted when empty), and the XSS contract — username / reply-name /
+ * mini-markdown (bold/italic/code/strike/br), reply-bar, reactions (all
+ * chips, count omitted when empty), and the XSS contract — username / reply-name /
  * quote / emoji / count go through escapeHtml. content passes through
  * «sanitize» (identity in the stub), so its XSS safety is delegated to
  * DOMPurify and a separate contract test, not here.
@@ -141,11 +141,11 @@ test('reactions: rendered, count chip omitted when empty', () => {
     assert.ok(second.indexOf('dsc_reaction_count') === -1 || second.indexOf('dsc_reaction_count') > 50, 'empty count should omit count chip');
 });
 
-test('reactions: capped at 6 chips', () => {
+test('reactions: every chip rendered, no cap', () => {
     const reactions = Array.from({ length: 10 }, (_, i) => ({ emoji: String(i), count: '1' }));
     const html = renderMessages([msg({ reactions })]);
     const chipCount = (html.match(/class="dsc_reaction"/g) || []).length;
-    assert.equal(chipCount, 6);
+    assert.equal(chipCount, 10);
 });
 
 // ── XSS contract (renderer escape per field) ──
@@ -204,12 +204,17 @@ test('message without media renders no placeholder (legacy shape intact)', () =>
 });
 
 function makePlaceholder(attrs) {
+    const classes = new Set();
     return {
         _attrs: { ...attrs },
+        _classes: classes,
         getAttribute(k) { return this._attrs[k] ?? null; },
         setAttribute(k, v) { this._attrs[k] = v; },
         appendChild(c) { this.child = c; },
-        classList: { add() {} },
+        classList: {
+            add(c) { classes.add(c); },
+            remove(c) { classes.delete(c); },
+        },
         textContent: 'stale',
     };
 }
@@ -225,6 +230,64 @@ test('upgradeMediaPlaceholders: upgrades placeholder to img with allowlisted URL
     assert.ok(placeholder.child);
     assert.equal(placeholder.child.src, 'https://media.giphy.com/a.gif');
     assert.equal(placeholder.child.alt, 'cat');
+    // memegen cold renders can stall for minutes — the box starts marked
+    // as loading and carries a watchdog
+    assert.ok(placeholder._classes.has('dsc_gif_loading'));
+});
+
+test('upgradeMediaPlaceholders: load clears the loading marker', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://media.giphy.com/a.gif',
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': 'cat',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    placeholder.child._listeners.load?.();
+    assert.ok(!placeholder._classes.has('dsc_gif_loading'));
+});
+
+test('upgradeMediaPlaceholders: watchdog re-requests, then degrades a stalled box to its caption', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
+        'data-dsc-media-type': 'meme',
+        'data-dsc-media-alt': 'cmm: sign text',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    const img = placeholder.child;
+    // two stalls re-request the same stateless URL (cache hit once rendered)
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png');
+    assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
+    // third stall gives up: caption text replaces the dead img box
+    globalThis._dscTickIntervals();
+    assert.ok(placeholder._classes.has('dsc_gif_stalled'));
+    assert.ok(!placeholder._classes.has('dsc_gif_loading'));
+    assert.equal(placeholder.child.textContent, 'cmm: sign text');
+    // the watchdog is cleared — further ticks change nothing
+    const after = placeholder.textContent;
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.equal(placeholder.textContent, after);
+});
+
+test('upgradeMediaPlaceholders: watchdog releases a loaded image without touching it', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://media.giphy.com/a.gif',
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': 'cat',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    const img = placeholder.child;
+    img.complete = true;
+    img.naturalWidth = 800;
+    globalThis._dscTickIntervals();
+    assert.ok(!placeholder._classes.has('dsc_gif_loading'));
+    assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
+    assert.equal(placeholder.child, img);
 });
 
 test('upgradeMediaPlaceholders: disallowed URL is dropped, not upgraded', () => {

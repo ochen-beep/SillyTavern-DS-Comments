@@ -54,6 +54,16 @@ export const defaultSettings = Object.freeze({
     customEndpoint: '',
     customModel: '',
 
+    // SSE streaming for generation requests. Transport-only mechanics: the
+    // extension needs the FULL text for parsing, so chunks are accumulated and
+    // returned as one string — streaming just keeps proxies (Cloudflare 524 on
+    // long non-streaming replies) and stream-only gateways happy.
+    stream: true,
+    // "Extra params (JSON)": user JSON merged into the request body of BOTH
+    // transports (e.g. {"reasoning_effort":"none"}). Validated at request time;
+    // the "stream" key is rejected there — the toggle above owns it.
+    extraBody: '',
+
     // window invocation control: 'bar' (quick-reply bar button) | 'floating' (draggable FAB) | 'both'
     launcherMode: 'bar',
 
@@ -111,7 +121,8 @@ export const defaultSettings = Object.freeze({
     reactionEmotes: false,
     emoteSetId: '',
 
-    // prompt template: builtins in chat-styles/*.md ('main', 'test' — vibe) + user copies.
+    // prompt template: builtin in chat-styles/main.md ('test' was merged into it,
+    // see docs/prompt-template-main-backup.md) + user copies.
     // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
     promptTemplate: 'main',
     promptTemplates: {},              // { name: text } — server-synced extension settings (was browser-local localforage)
@@ -310,12 +321,14 @@ export function hashHue(name) {
     return Math.abs(hash) % 360;
 }
 
-const _extractTmp = document.createElement('div');
+// DOMParser documents are inert: no resource loads, no inline handler
+// execution. A detached div does run <img src=x onerror=...> handlers parsed
+// from model / imported-chat message text, so plain innerHTML must not be
+// used here. Non-rendered documents make innerText === textContent, so the
+// extracted text is byte-identical to the previous div-based implementation.
+const _extractParser = new DOMParser();
 export function extractText(htmlString) {
-    _extractTmp.innerHTML = htmlString;
-    const text = _extractTmp.innerText || _extractTmp.textContent || '';
-    _extractTmp.innerHTML = '';
-    return text;
+    return _extractParser.parseFromString(String(htmlString ?? ''), 'text/html').body.textContent || '';
 }
 
 // ── HTML Escape (single-pass) ──
@@ -472,6 +485,10 @@ export async function loadSettings() {
     state.settings.mediaMemes = state.settings.mediaMemes === true;
     state.settings.reactionEmotes = state.settings.reactionEmotes === true;
     state.settings.emoteSetId = String(state.settings.emoteSetId || '').trim();
+    // Streaming: ON unless EXPLICITLY false — old saves without the key
+    // (and any garbage value) switch to the streaming path.
+    state.settings.stream = state.settings.stream !== false;
+    state.settings.extraBody = String(state.settings.extraBody ?? '').trim();
     if (!state.settings.soundFiles) state.settings.soundFiles = {};
     if (!state.settings.soundId) state.settings.soundId = 'default';
 

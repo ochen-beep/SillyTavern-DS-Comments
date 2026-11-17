@@ -231,18 +231,39 @@ export async function downscaleDataUrl(dataUrl) {
 }
 
 /**
+ * Whether an image ref may be fetched for the prompt. Inline <img> refs are
+ * scraped from raw message text (model output / imported chats) — untrusted
+ * input: fetching an arbitrary host would turn every generation into an
+ * authenticated read (cookies ride same-origin requests) whose content is
+ * base64-attached to the prompt. data: refs are handled by the caller; here
+ * relative paths and ST's own file store pass, foreign origins do not.
+ */
+function isTrustedImageRef(url) {
+    const s = String(url ?? '');
+    if (s.startsWith('//')) return false;               // protocol-relative → arbitrary host
+    if (s.startsWith('/')) return true;                 // origin-absolute path (ST file store)
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) return true;   // scheme-less relative path → same-origin
+    try { return new URL(s).origin === location.origin; }
+    catch { return false; }
+}
+
+/**
  * Load one attachment into an OpenAI image part. data URLs skip the network;
- * external URLs are fetched (same-origin /user/files/... is the common case;
- * CORS failures skip the image silently, mirroring ST's addImage behaviour).
- * The fetch carries the generation's abort signal AND a hard timeout — a
- * hanging image host must not stall the images phase. detail is always
- * 'low' — see core.js defaultSettings.
+ * trusted same-origin URLs are fetched (same-origin /user/files/... is the
+ * common case; CORS failures skip the image silently, mirroring ST's
+ * addImage behaviour). The fetch carries the generation's abort signal AND a
+ * hard timeout — a hanging image host must not stall the images phase.
+ * detail is always 'low' — see core.js defaultSettings.
  * @returns {Promise<{type:'image_url', image_url:{url:string, detail:string}}|null>}
  */
 export async function loadImagePart(image, signal = null) {
     try {
         let dataUrl = String(image?.url ?? '');
         if (!dataUrl) return null;
+        if (!dataUrl.startsWith('data:') && !isTrustedImageRef(dataUrl)) {
+            warn(`loadImagePart: skipped untrusted image ref (${dataUrl.slice(0, 80)})`);
+            return null;
+        }
         if (!dataUrl.startsWith('data:')) {
             const response = await fetchWithTimeout(dataUrl, { method: 'GET', cache: 'force-cache', signal });
             if (!response.ok) throw new Error(`fetch failed: ${response.status}`);

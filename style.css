@@ -538,6 +538,11 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 @media (prefers-reduced-motion: reduce) { .dsc_fab.dsc_generating { animation: none; opacity: 0.8; will-change: auto; } }
 
 /* ── Settings panel (ST extensions_settings) ── */
+.dsc_settings {
+    /* Контекст для вложенных container-query: раскладка сворачивается по ширине
+       КОЛОНКИ настроек (внутри drawer'а ST), а не по ширине окна. */
+    container-type: inline-size;
+}
 .dsc_settings .dsc_section {
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     margin: 0;
@@ -586,6 +591,9 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 .dsc_sound_volume_group { min-width: 0; }
 .dsc_sound_volume_group input:disabled { opacity: 0.45; cursor: not-allowed; }
 @media (max-width: 480px) { .dsc_sound_controls { grid-template-columns: 1fr; gap: 0; } }
+/* Узкая колонка настроек (drawer ST при широком окне): медиазапрос выше смотрит
+   на окно и не срабатывает — сворачиваем по контейнеру. */
+@container (max-width: 360px) { .dsc_sound_controls { grid-template-columns: 1fr; gap: 0; } }
 .dsc_input, .dsc_select {
     width: 100%; padding: 8px 10px; border-radius: 7px;
     background: rgba(255, 255, 255, 0.05); color: var(--dsc-text);
@@ -685,6 +693,9 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 .dsc_field_group > div .dsc_btn_action { flex: 0 0 auto; }
 /* Disabled action button — не активная для builtin шаблонов (Reset/Del/Dup) */
 .dsc_btn_action:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Деструктивная кнопка очистки: подпись длиннее узкой колонки — переносим на
+   2 строки вместо срезки (nowrap+ellipsis с text-align:center режет оба края). */
+#dsc_clear_all { white-space: normal; height: auto; min-height: 38px; line-height: 1.3; }
 
 /* ── Mobile / Termux (≤768px) — full screen, no drag/resize ── */
 @media (max-width: 768px) {
@@ -732,3 +743,22 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
    chat-select, drawer combos). */
 /* unresolved media request in a media-only comment — bracketed degradation */
 .dsc_media_fallback { opacity: 0.55; font-style: italic; }
+
+/* memegen cold-renders new caption combos server-side: a pending box shows a
+   quiet pulse instead of an empty frame; a stalled box (watchdog gave up in
+   renderer.js) degrades to its caption text via dsc_media_fallback. */
+.dsc_gif_loading::after {
+    content: "…";
+    display: block;
+    min-width: 72px;
+    padding: 16px;
+    text-align: center;
+    color: var(--dsc-text);
+    animation: dsc_loading_pulse 1.4s ease-in-out infinite;
+}
+.dsc_gif_loading.dsc_gif_sticker::after { background: transparent; }
+.dsc_gif_stalled { width: auto; padding: 8px 12px; line-height: normal; }
+@keyframes dsc_loading_pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+}

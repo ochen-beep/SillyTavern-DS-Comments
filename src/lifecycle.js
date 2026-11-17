@@ -7,6 +7,7 @@
 
 import { state, saveSettings, getCtx, trace } from './core.js';
 import { recordEvent } from './event-log.js';
+import { loadFeedStore } from './feed-file-store.js';
 
 /**
  * Dependencies lifecycle cannot import directly without closing an import cycle.
@@ -90,6 +91,12 @@ export async function onNoSaveModeChanged() {
                 trace(`onNoSaveModeChanged: transferred saveMode feed #${state.currentPostId}[${state.currentSwipeIdx}] → pinned`);
             }
         }
+    } else {
+        // init skips loadFeedStore while noSaveMode is on, so a session that
+        // booted in noSave and switched back has no mirror yet: the next
+        // save would start from an empty mirror and overwrite the server
+        // file, dropping every prior entry. Load before anything can write.
+        await loadFeedStore();
     }
 
     // Mode-agnostic show via the feed controller.

@@ -87,7 +87,9 @@ async function fetchMemeTemplates(signal) {
     if (_memeTemplates && Date.now() - _memeTemplatesTs < MEME_TEMPLATES_TTL_MS) {
         return _memeTemplates;
     }
-    const response = await fetchWithTimeout(MEMEGEN_TEMPLATES_URL, { method: 'GET', signal });
+    // /templates/ is routinely slow on flaky networks (>40s observed live);
+    // the 8s default aborts every meme for the whole session.
+    const response = await fetchWithTimeout(MEMEGEN_TEMPLATES_URL, { method: 'GET', signal, timeoutMs: 30000 });
     if (!response.ok) {
         const err = new Error(`memegen templates: HTTP ${response.status}`);
         err.diagnostic = 'templates_unavailable';
@@ -159,12 +161,26 @@ export function resolveMemeTemplate(hint, templates) {
         const t = byCanonical(aliased);
         if (t) return t;
     }
+    // 2. A template id beats every name/keyword match: the live API lets
+    // several templates share a keyword ("spiderman" is both an id and a
+    // keyword of Peter Parker's Glasses), and list order would decide —
+    // the model's explicit id must win.
+    const byId = templates.find(t => _normMemeName(t.id) === needle);
+    if (byId) return byId;
     for (const pass of ['exact', 'prefix', 'substring']) {
         for (const t of templates) {
             const ks = keys(t);
-            const hit = pass === 'exact' ? ks.some(k => k === needle)
-                : pass === 'prefix' ? ks.some(k => k.startsWith(needle))
-                : ks.some(k => k.includes(needle) || needle.includes(k));
+        const hit = pass === 'exact' ? ks.some(k => k === needle)
+            // A 2-char hint prefix-matches unrelated names ("me" →
+            // "meninblack"); only ids resolve that short.
+            : pass === 'prefix' ? needle.length >= 3 && ks.some(k => k.startsWith(needle))
+            // Short fragments collide catastrophically in both directions:
+            // "sk" hides inside "waiting skeleton", "ch" inside "chuck norris",
+            // "me" inside "men in black" — each resolving to a totally
+            // different meme. Substring matching needs a fragment long enough
+            // to be intentional.
+            : ks.some(k => (needle.length >= 5 && k.includes(needle))
+                || (k.length >= 4 && needle.includes(k)));
             if (hit) return t;
         }
     }
@@ -193,7 +209,7 @@ export function buildMemeUrl(template, spec) {
     const segments = Array(lines).fill('');
     const placement = template.id === 'ds' ? DS_PLACEMENT : null;
     if (lines === 1) {
-        segments[0] = top;
+        segments[0] = top || bottom;   // a bottom-only caption still renders
     } else if (placement && placement[0] < lines && placement[1] < lines) {
         segments[placement[0]] = top;
         segments[placement[1]] = bottom;

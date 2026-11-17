@@ -346,6 +346,28 @@ describe('setFeedSlot / getFeedSlot', () => {
         assert.deepEqual(entry?.threads, threads);
     });
 
+    test('rapid mutations coalesce into ONE full-file upload', async () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        await loadFeedStore();
+        let uploads = 0;
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = (url, init) => {
+            if (String(url) === '/api/files/upload') uploads++;
+            return realFetch(url, init);
+        };
+        try {
+            setFeedSlot('0', 0, '<p>one</p>', 'fp-a');
+            setFeedSlot('0', 0, '<p>one two</p>', 'fp-b');   // same slot again — must not double-upload
+            await flushFeedStoreWrites();
+            assert.equal(uploads, 1, 'two rapid writes → one upload');
+            const doc = JSON.parse(globalThis._stFiles['dsc_' + globalThis._stCtx.chatMetadata.dscomments_commentary.guid + '.json']);
+            assert.equal(doc.entries['2026-08-19T10:00:00.000Z'].html, '<p>one two</p>', 'the LATEST state landed');
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+    });
+
     test('threads=null on write stores null (legacy shape preserved)', async () => {
         globalThis._stCtx.chatId = 'c1';
         globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];

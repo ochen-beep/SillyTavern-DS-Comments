@@ -83,6 +83,13 @@ const TEMPLATES = [
     { id: 'ds', name: 'Daily Struggle', keywords: ['two buttons'], lines: 2 },
     { id: 'db', name: 'Distracted Boyfriend', keywords: [], lines: 3 },
     { id: 'cmm', name: 'Change My Mind', keywords: [], lines: 1 },
+    { id: 'sk', name: 'Skeptical Third World Kid', keywords: [], lines: 2 },
+    // mirrors the live API: this template shares the "spiderman" keyword and
+    // sits before the real spiderman template in the list
+    { id: 'glasses', name: "Peter Parker's Glasses", keywords: ['spiderman'], lines: 2 },
+    { id: 'spiderman', name: 'Spider-Man Pointing at Spider-Man', keywords: [], lines: 2 },
+    // prefix trap from the live list: a 2-char hint prefix-matches this name
+    { id: 'because', name: 'Men in Black', keywords: [], lines: 2 },
 ];
 
 test('meme template resolution: alias → canonical id, then id/name/keyword fuzzy', () => {
@@ -96,7 +103,19 @@ test('meme template resolution: alias → canonical id, then id/name/keyword fuz
     assert.equal(resolveMemeTemplate('drake hotline bling', TEMPLATES).id, 'drake');
     // prefix: "distract" → "db" (Distracted Boyfriend)
     assert.equal(resolveMemeTemplate('distract', TEMPLATES).id, 'db');
+    // short fragments must not substring-collide with short template ids
+    // ("waitingskeleton" contains "sk", "chucknorris" contains "ch")
+    assert.equal(resolveMemeTemplate('waiting skeleton', TEMPLATES), null);
+    assert.equal(resolveMemeTemplate('pikachu', TEMPLATES), null);
+    assert.equal(resolveMemeTemplate('me', TEMPLATES), null);
     assert.equal(resolveMemeTemplate('nonexistent-template', TEMPLATES), null);
+    // a template id beats a foreign template's keyword: the live API gives
+    // Peter Parker's Glasses a "spiderman" keyword listed before the real one
+    assert.equal(resolveMemeTemplate('spiderman', TEMPLATES).id, 'spiderman');
+    // 2-char hints cannot prefix-match long names ("me" → "meninblack");
+    // only ids resolve that short
+    assert.equal(resolveMemeTemplate('me', TEMPLATES), null);
+    assert.equal(resolveMemeTemplate('ds', TEMPLATES).id, 'ds');
     assert.equal(resolveMemeTemplate('', TEMPLATES), null);
     assert.equal(resolveMemeTemplate('drake', []), null);
 });
@@ -126,6 +145,11 @@ test('meme URL building: 1/2/3-line templates, single encoding', () => {
     assert.equal(
         buildMemeUrl(cmm, { template: 'cmm', top: 'me', bottom: 'ignored' }),
         'https://api.memegen.link/images/cmm/me.png',
+    );
+    // 1-line template with an empty top falls back to the bottom caption
+    assert.equal(
+        buildMemeUrl(cmm, { template: 'cmm', top: '', bottom: 'sign text' }),
+        'https://api.memegen.link/images/cmm/sign_text.png',
     );
     // Cyrillic is percent-encoded exactly once and switches to the unicode font
     // (memegen's impact has no cyrillic glyphs and silently drops the caption)

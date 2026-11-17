@@ -115,10 +115,10 @@ test('message missing content → dropped → null', () => {
     assert.equal(parseCommentary(JSON.stringify([{ username: 'a' }])), null);
 });
 
-test('oversized response (>100k) → null', () => {
+test('oversized response (>100k) still parses', () => {
     const huge = JSON.stringify([{ username: 'a', content: 'x'.repeat(100_001) }]);
     assert.ok(huge.length > 100_000);
-    assert.equal(parseCommentary(huge), null);
+    assert.equal(parseCommentary(huge).length, 1);
 });
 
 // ── stripReasoningBlocks ──

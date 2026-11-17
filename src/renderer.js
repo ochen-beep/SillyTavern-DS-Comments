@@ -116,7 +116,38 @@ export function upgradeMediaPlaceholders(root) {
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
             img.src = rawUrl;
-            img.addEventListener('error', () => trace(`media failed to load: ${url}`));
+            img.addEventListener('error', () => trace(`media failed to load: ${rawUrl}`));
+            // memegen renders every NEW caption combo server-side — sometimes
+            // for minutes — and a stalled transfer reserves an empty box
+            // forever. The loading class keeps the box honest while waiting;
+            // the watchdog re-requests the same stateless URL (a finished
+            // render is cached and returns instantly) and, after three
+            // stalls, degrades the box to the caption text — the joke
+            // survives even when the render never lands. The stored feed HTML
+            // keeps the placeholder, so a later re-render retries fresh.
+            node.classList?.add?.('dsc_gif_loading');
+            img.addEventListener('load', () => node.classList?.remove?.('dsc_gif_loading'), { once: true });
+            let stalls = 0;
+            const watchdog = setInterval(() => {
+                if (img.complete && img.naturalWidth > 0) {
+                    clearInterval(watchdog);
+                    node.classList?.remove?.('dsc_gif_loading');
+                    return;
+                }
+                stalls++;
+                if (stalls >= 3) {
+                    clearInterval(watchdog);
+                    node.classList?.remove?.('dsc_gif_loading');
+                    node.classList?.add?.('dsc_gif_stalled');
+                    const caption = document.createElement('span');
+                    caption.className = 'dsc_media_fallback';
+                    caption.textContent = img.alt || '';
+                    node.textContent = '';
+                    node.appendChild?.(caption);
+                    return;
+                }
+                img.src = rawUrl;
+            }, 30000);
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);
@@ -162,14 +193,14 @@ export function renderMessages(messages) {
             </div>`;
         }
 
-        // ── Reactions (optional, max 6 chips) ──
+        // ── Reactions (optional; every chip the model gave) ──
         // An emoji value that names an emote in the loaded pack renders as a
         // CODE placeholder — upgradeMediaPlaceholders resolves code → URL from
         // the live manifest (the persisted URL is never trusted, only the
         // code), unknown codes fall through to plain text.
         let reactionsHtml = '';
         if (msg.reactions && msg.reactions.length > 0) {
-            const chips = msg.reactions.slice(0, 6).map(r => {
+            const chips = msg.reactions.map(r => {
                 const code = String(r.emoji || '').replace(/^:|:$/g, '');
                 const emoteUrl = getEmoteUrl(code);
                 const emojiHtml = emoteUrl
