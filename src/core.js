@@ -121,7 +121,8 @@ export const defaultSettings = Object.freeze({
     reactionEmotes: false,
     emoteSetId: '',
 
-    // prompt template: builtins in chat-styles/*.md ('main', 'test' — vibe) + user copies.
+    // prompt template: builtin in chat-styles/main.md ('test' was merged into it,
+    // see docs/prompt-template-main-backup.md) + user copies.
     // The contract (header + FORMAT RULES) lives in code (prompt-contract.js).
     promptTemplate: 'main',
     promptTemplates: {},              // { name: text } — server-synced extension settings (was browser-local localforage)

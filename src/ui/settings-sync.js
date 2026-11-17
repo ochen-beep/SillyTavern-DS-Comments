@@ -338,9 +338,11 @@ let _promptEditorReq = 0;
 // ── Prompt templates (edit-on-place, stored in extension settings) ──
 
 // Built-in templates: served from /chat-styles/*.md, cannot be deleted or reset.
+// 'test' was merged into 'main' (2026-11-17); old-'main' vibe lives in
+// docs/prompt-template-main-backup.md. A still-selected 'test' shows as
+// "not found" in the picker and falls back to 'main' at generation time.
 const BUILTIN_TEMPLATES = {
     main: 'main',
-    test: 'test',
 };
 export const isBuiltinTemplate = (name) => Object.prototype.hasOwnProperty.call(BUILTIN_TEMPLATES, name);
 const _builtinCache = {};
