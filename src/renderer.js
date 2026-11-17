@@ -121,22 +121,42 @@ export function upgradeMediaPlaceholders(root) {
             // for minutes — and a stalled transfer reserves an empty box
             // forever. The loading class keeps the box honest while waiting;
             // the watchdog re-requests the same stateless URL (a finished
-            // render is cached and returns instantly) and, after three
-            // stalls, degrades the box to the caption text — the joke
-            // survives even when the render never lands. The stored feed HTML
-            // keeps the placeholder, so a later re-render retries fresh.
+            // render is cached and returns instantly). After three stalls the
+            // box degrades to the caption text — the joke survives even when
+            // the render never lands — but the watchdog keeps polling a
+            // bounded number of extra ticks: a late render swaps the image
+            // back in place of the caption. The stored feed HTML keeps the
+            // placeholder, so a later re-render retries fresh.
             node.classList?.add?.('dsc_gif_loading');
-            img.addEventListener('load', () => node.classList?.remove?.('dsc_gif_loading'), { once: true });
+            let degraded = false;
+            const restoreImage = () => {
+                degraded = false;
+                node.classList?.remove?.('dsc_gif_stalled');
+                node.textContent = '';
+                node.appendChild?.(img);
+            };
+            img.addEventListener('load', () => {
+                node.classList?.remove?.('dsc_gif_loading');
+                if (degraded) restoreImage();
+            });
             let stalls = 0;
             const watchdog = setInterval(() => {
                 if (img.complete && img.naturalWidth > 0) {
                     clearInterval(watchdog);
                     node.classList?.remove?.('dsc_gif_loading');
+                    if (degraded) restoreImage();
                     return;
                 }
                 stalls++;
-                if (stalls >= 3) {
+                // ponytail: bounded revival window — 3 extra ticks (~90s) past
+                // the degrade, then give up entirely; a longer tail needs a
+                // backoff schedule nobody has asked for.
+                if (stalls >= 6) {
                     clearInterval(watchdog);
+                    return;
+                }
+                if (stalls === 3) {
+                    degraded = true;
                     node.classList?.remove?.('dsc_gif_loading');
                     node.classList?.add?.('dsc_gif_stalled');
                     const caption = document.createElement('span');
@@ -144,7 +164,6 @@ export function upgradeMediaPlaceholders(root) {
                     caption.textContent = img.alt || '';
                     node.textContent = '';
                     node.appendChild?.(caption);
-                    return;
                 }
                 img.src = rawUrl;
             }, 30000);

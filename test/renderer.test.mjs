@@ -247,7 +247,7 @@ test('upgradeMediaPlaceholders: load clears the loading marker', () => {
     assert.ok(!placeholder._classes.has('dsc_gif_loading'));
 });
 
-test('upgradeMediaPlaceholders: watchdog re-requests, then degrades a stalled box to its caption', () => {
+test('upgradeMediaPlaceholders: watchdog re-requests, degrades after 3 stalls, revives on a late render', () => {
     const placeholder = makePlaceholder({
         'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
         'data-dsc-media-type': 'meme',
@@ -261,16 +261,53 @@ test('upgradeMediaPlaceholders: watchdog re-requests, then degrades a stalled bo
     globalThis._dscTickIntervals();
     assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png');
     assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
-    // third stall gives up: caption text replaces the dead img box
+    // third stall degrades to the caption — but the watchdog keeps polling
     globalThis._dscTickIntervals();
     assert.ok(placeholder._classes.has('dsc_gif_stalled'));
     assert.ok(!placeholder._classes.has('dsc_gif_loading'));
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
-    // the watchdog is cleared — further ticks change nothing
-    const after = placeholder.textContent;
+    // a late render (load fires on the polled img) swaps the image back in
+    img.complete = true;
+    img.naturalWidth = 600;
+    img._listeners.load?.();
+    assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
+    assert.equal(placeholder.child, img);
+    // watchdog is released only after the bounded revival window (6 ticks)
+    const beforeExpiry = placeholder.child;
     globalThis._dscTickIntervals();
     globalThis._dscTickIntervals();
-    assert.equal(placeholder.textContent, after);
+    assert.equal(placeholder.child, beforeExpiry, 'still polling — nothing to degrade, image intact');
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.equal(placeholder.child, img, 'past the revival window the watchdog stops without touching the box');
+});
+
+test('upgradeMediaPlaceholders: degraded box never revives if the render never lands', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
+        'data-dsc-media-type': 'meme',
+        'data-dsc-media-alt': 'cmm: sign text',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    // three stalls → caption
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.ok(placeholder._classes.has('dsc_gif_stalled'));
+    assert.equal(placeholder.child.textContent, 'cmm: sign text');
+    // no load ever fires: through the revival window the caption stays
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.ok(placeholder._classes.has('dsc_gif_stalled'), 'caption survives a never-ending stall');
+    assert.equal(placeholder.child.textContent, 'cmm: sign text');
+    // watchdog expired: further ticks are inert
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.equal(placeholder.child.textContent, 'cmm: sign text');
 });
 
 test('upgradeMediaPlaceholders: watchdog releases a loaded image without touching it', () => {
