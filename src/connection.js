@@ -447,6 +447,10 @@ async function readSseText(body) {
  * @returns {Promise<string>}
  */
 export async function generateWithCustomEndpoint(systemPrompt, userMessages, assistantPrefill = '', signal, endpointUrl, model) {
+    // Pre-subscription abort check: addEventListener('abort') never fires on
+    // an ALREADY-aborted signal, so a cancel that landed before this point
+    // would otherwise send the request anyway.
+    signal?.throwIfAborted();
     const { endpointUrl: url } = await authorizeCustomEndpoint(endpointUrl);
 
     const apiKey = await getApiKey();
@@ -514,7 +518,8 @@ export async function generateWithCustomEndpoint(systemPrompt, userMessages, ass
     const timeoutController = new AbortController();
     let timedOut = false;
     const onUserAbort = () => timeoutController.abort();
-    signal?.addEventListener('abort', onUserAbort, { once: true });
+    if (signal?.aborted) onUserAbort();   // cancel landed before subscription — apply it now
+    else signal?.addEventListener('abort', onUserAbort, { once: true });
     const timer = setTimeout(() => { timedOut = true; timeoutController.abort(); }, _customEndpointTimeoutMs);
 
     let response;

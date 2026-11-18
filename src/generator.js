@@ -763,6 +763,10 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
 
     try {
         const phaseStartedAt = performance.now();
+        // Abort can land between async phases whose APIs take no signal (the
+        // style fetch, template/lore reads): without this check a cancel in
+        // such a phase is fiction — the request still goes out.
+        signal?.throwIfAborted();
         // Media features resolved ONCE (key-aware) — the contract text, the
         // mediaHash and the post-parse resolve phase all consume this snapshot,
         // so they can never disagree about whether GIFs/stickers are in play.
@@ -793,6 +797,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         if (!stylePrompt) throw new Error(tr('Prompt template could not be loaded', 'dscomments.error.noTemplate'));
 
         const fingerprintStartedAt = performance.now();
+        signal?.throwIfAborted();
         const generationInput = await buildCurrentFingerprintInput(settings, loreConfig, stylePrompt);
         if (settings.includePastComments && !settings.noSaveMode) {
             // The stored fp must reflect the threads INCLUDED IN THIS PROMPT:
@@ -855,6 +860,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         // all (neither ST activation nor manual loading) and no block is added.
         let lore = { text: '', entries: [], missing: [] };
         const loreStartedAt = performance.now();
+        signal?.throwIfAborted();
         const loreScope = loreConfig.autoScope ?? LORE_SCOPE.ALL;
         if (loreConfig.enabled) {
             try {
@@ -893,6 +899,7 @@ export async function generateFeed(targetMsgId, targetSwipeIdx, forceRegenerate 
         }
 
         const promptStartedAt = performance.now();
+        signal?.throwIfAborted();
         const assembled = assembleCompletePrompt({
             ctx,
             stylePrompt,

@@ -13,6 +13,28 @@ import { iconHtml } from './icons.js';
 // ── Status overlay (exported — used by generator.js) ──
 
 /**
+ * Cancel the in-flight generation. Shared by the status-overlay button and
+ * the header regen button so both keep identical semantics. Deliberately
+ * does NOT bump the generation epoch: the generator's catch renders the
+ * "Generation cancelled" state, which requires the epoch to still be current.
+ * The in-flight owner's finally observes the dropped generationOwner via
+ * ownsGeneration=false, so a late result can neither render nor store.
+ */
+export function cancelGeneration() {
+    if (state.abortController) {
+        state.abortController.abort();
+        state.abortController = null;
+    }
+    state.generationOwner = null;
+    state.generationInProgress = false;
+    state.generationTarget = null;
+    state.generationObservedTarget = null;
+    // Cancel means stop everything: drop a parked queued generation too,
+    // or it would start right after the user pressed cancel.
+    state.queuedGeneration = null;
+}
+
+/**
  * Show/hide the status overlay pill.
  * Message and action label are escaped: the overlay is innerHTML-built, and
  * the contract must hold mechanically even if a future caller passes server
@@ -36,12 +58,7 @@ export function setStatus(message, opts = {}) {
     if (opts.isAction) {
         const btn = overlay.querySelector('#dscCancelGen');
         if (btn) btn.addEventListener('click', () => {
-            if (state.abortController) {
-                state.abortController.abort();
-                state.abortController = null;
-            }
-            state.generationInProgress = false;
-            state.queuedGeneration = null;   // same cancel semantics as the regen button
+            cancelGeneration();
             setStatus('');
         }, { once: true });
     }
@@ -92,11 +109,7 @@ export function syncRegenVisual() {
 export function makeRegenHandler(generateFeed) {
     return function handleRegen() {
         if (state.generationInProgress) {
-            if (state.abortController) { state.abortController.abort(); state.abortController = null; }
-            state.generationInProgress = false;
-            // Cancel means stop everything: drop a parked queued generation too,
-            // or it would start right after the user pressed cancel.
-            state.queuedGeneration = null;
+            cancelGeneration();
             return;
         }
         // The generator owns target resolution. Passing a null target keeps the
