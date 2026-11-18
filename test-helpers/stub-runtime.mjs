@@ -32,6 +32,9 @@ function makeEl() {
         alt: '',
         src: '',
         remove() {},
+        // isConnected mirrors a live-DOM img inside the feed: the media
+        // watchdog gates on it. Tests that exercise detachment flip this.
+        isConnected: true,
         // dialog/<el> semantics the lightbox test drives; last listener wins,
         // which is all the single-handler wiring under test needs.
         open: false,

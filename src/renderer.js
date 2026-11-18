@@ -141,6 +141,13 @@ export function upgradeMediaPlaceholders(root) {
             });
             let stalls = 0;
             const watchdog = setInterval(() => {
+                // The feed was replaced (innerHTML swap) or the panel torn
+                // down: stop polling and let the nodes go — a detached img
+                // keeps issuing real network requests otherwise.
+                if (!img.isConnected) {
+                    clearInterval(watchdog);
+                    return;
+                }
                 if (img.complete && img.naturalWidth > 0) {
                     clearInterval(watchdog);
                     node.classList?.remove?.('dsc_gif_loading');
@@ -165,7 +172,11 @@ export function upgradeMediaPlaceholders(root) {
                     node.textContent = '';
                     node.appendChild?.(caption);
                 }
-                img.src = rawUrl;
+                // Cache-bust the retry: re-assigning the same URL can reuse a
+                // stalled connection/partial cache entry (observed live with
+                // memegen on a throttled link — every identical retry died at
+                // the same byte offset). A unique query forces a fresh stream.
+                img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=${stalls}`;
             }, 30000);
             node.textContent = '';
             node.appendChild?.(img);

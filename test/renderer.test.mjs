@@ -256,10 +256,12 @@ test('upgradeMediaPlaceholders: watchdog re-requests, degrades after 3 stalls, r
     const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
     upgradeMediaPlaceholders(feed);
     const img = placeholder.child;
-    // two stalls re-request the same stateless URL (cache hit once rendered)
+    // stalls retry the URL with a cache-buster — an identical retry reuses the
+    // same stalled connection (observed live on memegen: every retry died at
+    // the same byte offset)
     globalThis._dscTickIntervals();
     globalThis._dscTickIntervals();
-    assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png');
+    assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png?dscr=2');
     assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
     // third stall degrades to the caption — but the watchdog keeps polling
     globalThis._dscTickIntervals();

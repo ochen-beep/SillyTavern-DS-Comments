@@ -232,7 +232,12 @@ export function buildMemeUrl(template, spec) {
     // identical). Any non-ASCII caption switches to Noto Sans, which covers
     // Cyrillic; pure-latin captions keep the canonical impact look.
     const needsUnicodeFont = /[^\x00-\x7F]/.test(`${spec?.top ?? ''}${spec?.bottom ?? ''}`);
-    return `${MEMEGEN_IMAGE_URL}${[template.id, ...segments.map(s => s || '_')].join('/')}.png${needsUnicodeFont ? '?font=notosans' : ''}`;
+    // width=480: full-size renders are 400-600KB PNGs, which stall mid-body on
+    // throttled links (observed live: every >24KB memegen body froze); the
+    // downscaled render stays readable and downloads reliably. Memes are
+    // reaction attachments — display size never exceeds ~300px.
+    const params = needsUnicodeFont ? '?font=notosans&width=480' : '?width=480';
+    return `${MEMEGEN_IMAGE_URL}${[template.id, ...segments.map(s => s || '_')].join('/')}.png${params}`;
 }
 
 // ── Provider searches ──
