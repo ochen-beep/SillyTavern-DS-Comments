@@ -24,15 +24,16 @@ const SEVEN_TV_SET_URL = (setId) => `https://7tv.io/v3/emote-sets/${encodeURICom
 const SEVEN_TV_CDN = (emoteId) => `https://cdn.7tv.app/emote/${encodeURIComponent(emoteId)}/2x.webp`;
 
 let _builtin = null;                       // { code: url } | null (immutable once fetched)
-let _sevenTvSetId = '';                    // id the current _sevenTv cache belongs to
-let _sevenTv = null;                       // { code: url } | null
 let _merged = {};                          // builtin + 7TV, what the renderer reads
 
-/** Test hook: inject manifest state without network. */
+/** Test hook: inject manifest state without network; resets SWR bookkeeping. */
 export function _setEmoteManifest({ builtin = null, sevenTv = null, sevenTvSetId = '' } = {}) {
     _builtin = builtin;
     _sevenTv = sevenTv;
     _sevenTvSetId = sevenTvSetId;
+    _sevenTvTs = sevenTv ? Date.now() : 0;
+    _sevenTvFailCount = 0;
+    _sevenTvLastAttemptAt = 0;
     _remerge();
 }
 
@@ -63,31 +64,121 @@ async function loadBuiltin(signal) {
     return _builtin;
 }
 
-const SEVEN_TV_RETRY_MS = 5 * 60 * 1000;   // a dead set is retried, but not per generation
-let _sevenTvFailedAt = 0;
+// 7TV set persistence + stale-while-revalidate. The reader's attention span
+// after a generation is ~1 minute, so chips must be ready BEFORE the network
+// is: the manifest (stable data — emote ids live for days) persists in
+// localforage and serves the feed at ANY age, while freshness is checked in
+// the background. A flaky CDN can then never blank a reading session that a
+// previous one already warmed.
+const LF_7TV_PREFIX = 'DSComments_7tvSet_';
+const SEVEN_TV_STALE_MS = 24 * 60 * 60 * 1000;          // revalidate daily
+// Ladder for failed freshness checks — sparse on purpose: failures never
+// block the reader (cached set keeps serving), so attempts piggyback on the
+// natural call points (init warmup, generations) instead of timers.
+const SEVEN_TV_BACKOFF_MS = [1, 5, 15].map(m => m * 60 * 1000);
+const SEVEN_TV_FETCH_TIMEOUT_MS = 20000;                // big JSON on a slow link (8s default timed out live)
+const SEVEN_TV_COLD_BACKOFF_MS = SEVEN_TV_BACKOFF_MS[0];
+
+let _sevenTvSetId = '';
+let _sevenTv = null;
+let _sevenTvTs = 0;                // when the current _sevenTv data was fetched
+let _sevenTvFailCount = 0;         // consecutive failed freshness checks
+let _sevenTvLastAttemptAt = 0;
+
+function _lf() {
+    try { return SillyTavern?.libs?.localforage ?? null; } catch { return null; }
+}
+
+async function _lfGetSevenTv(setId) {
+    try { return (await _lf()?.getItem(LF_7TV_PREFIX + setId)) ?? null; } catch { return null; }
+}
+
+function _lfPutSevenTv(setId, payload) {
+    try { _lf()?.setItem(LF_7TV_PREFIX + setId, payload)?.catch(() => {}); } catch { /* probe must never break callers */ }
+}
+
+function _parseSevenTvPayload(v) {
+    return v && typeof v === 'object' && typeof v.ts === 'number'
+        && v.map && typeof v.map === 'object' ? v : null;
+}
+
+/** Shared fetch for the cold path and background revalidation. */
+async function fetchSevenTvSet(setId, signal) {
+    const resp = await fetchWithTimeout(SEVEN_TV_SET_URL(setId), { signal, timeoutMs: SEVEN_TV_FETCH_TIMEOUT_MS });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const json = await resp.json();
+    const map = {};
+    for (const emote of Array.isArray(json?.emotes) ? json.emotes : []) {
+        if (emote?.id && emote?.name) map[emote.name] = SEVEN_TV_CDN(emote.id);
+    }
+    return map;
+}
+
+function _adoptSevenTv(setId, map) {
+    _sevenTv = map;
+    _sevenTvSetId = setId;
+    _sevenTvTs = Date.now();
+    _lfPutSevenTv(setId, { ts: _sevenTvTs, map });
+    _remerge();
+}
+
+/** Background freshness check for an already-serving cached set. Fire-and-
+ *  forget: the reader is covered, so the generation that triggered this must
+ *  not wait on the network. */
+function _maybeRevalidate(setId) {
+    const now = Date.now();
+    if (now - _sevenTvTs < SEVEN_TV_STALE_MS) return;
+    const backoff = SEVEN_TV_BACKOFF_MS[Math.min(_sevenTvFailCount, SEVEN_TV_BACKOFF_MS.length - 1)];
+    if (now - _sevenTvLastAttemptAt < backoff) return;
+    _sevenTvLastAttemptAt = now;
+    fetchSevenTvSet(setId)
+        .then((map) => {
+            _sevenTvFailCount = 0;
+            _adoptSevenTv(setId, map);
+            trace(`emotes: 7TV set ${setId} revalidated (${Object.keys(map).length})`);
+        })
+        .catch((e) => {
+            if (e?.name === 'AbortError') return;   // page teardown — nothing to back off
+            _sevenTvFailCount++;
+            warn(`emotes: 7TV set ${setId} revalidate failed — cached set keeps serving`, e);
+            recordEvent('log', `event=emotes_manifest pack=7tv status=stale error=${e?.message || e}`);
+        });
+}
 
 async function loadSevenTvSet(setId, signal) {
-    if (_sevenTv && _sevenTvSetId === setId) return _sevenTv;
-    if (_sevenTvFailedAt && Date.now() - _sevenTvFailedAt < SEVEN_TV_RETRY_MS && _sevenTvSetId === setId) return {};
-    try {
-        const resp = await fetchWithTimeout(SEVEN_TV_SET_URL(setId), { signal });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        const map = {};
-        for (const emote of Array.isArray(json?.emotes) ? json.emotes : []) {
-            if (emote?.id && emote?.name) map[emote.name] = SEVEN_TV_CDN(emote.id);
-        }
-        _sevenTv = map;
+    if (_sevenTv && _sevenTvSetId === setId) {
+        _maybeRevalidate(setId);
+        return _sevenTv;
+    }
+    // Serve the persisted manifest at any age — chips render while the
+    // background check runs.
+    const cached = _parseSevenTvPayload(await _lfGetSevenTv(setId));
+    if (cached && Object.keys(cached.map).length) {
+        _sevenTv = cached.map;
         _sevenTvSetId = setId;
-        _sevenTvFailedAt = 0;
+        _sevenTvTs = cached.ts;
+        _remerge();
+        _maybeRevalidate(setId);
+        return _sevenTv;
+    }
+    // Cold (no persisted copy): the generation path waits for one fetch.
+    const now = Date.now();
+    if (_sevenTvLastAttemptAt && now - _sevenTvLastAttemptAt < SEVEN_TV_COLD_BACKOFF_MS) {
+        _sevenTvSetId = setId;
+        return null;
+    }
+    try {
+        const map = await fetchSevenTvSet(setId, signal);
+        _sevenTvFailCount = 0;
+        _adoptSevenTv(setId, map);
         trace(`emotes: 7TV set ${setId} loaded (${Object.keys(map).length})`);
     } catch (e) {
         if (e?.name === 'AbortError') throw e;   // a cancelled generation must surface as cancelled
-        warn(`emotes: 7TV set ${setId} unavailable — built-in pack only (retry in 5 min)`, e);
-        recordEvent('log', `event=emotes_manifest pack=7tv status=unavailable`);
-        _sevenTv = null;
         _sevenTvSetId = setId;
-        _sevenTvFailedAt = Date.now();
+        _sevenTvFailCount++;
+        _sevenTvLastAttemptAt = Date.now();
+        warn(`emotes: 7TV set ${setId} unavailable — built-in pack only (cold retry in 1 min)`, e);
+        recordEvent('log', `event=emotes_manifest pack=7tv status=unavailable error=${e?.message || e}`);
     }
     return _sevenTv;
 }

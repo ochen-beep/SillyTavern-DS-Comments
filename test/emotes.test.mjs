@@ -113,3 +113,71 @@ test('refreshEmoteManifest: external abort propagates as AbortError', async () =
         globalThis.fetch = realFetch;
     }
 });
+
+// ── stale-while-revalidate: persisted set serves instantly, network is background ──
+
+const LF_7TV_KEY = 'DSComments_7tvSet_setcached';
+
+test('SWR: a persisted 7TV set serves chips first, network only revalidates in background', async () => {
+    await SillyTavern.libs.localforage.setItem(LF_7TV_KEY, {
+        ts: Date.now() - 3 * 24 * 60 * 60 * 1000,   // 3 days old — far past freshness
+        map: { CachedEmote: 'https://cdn.7tv.app/emote/cached/2x.webp' },
+    });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u === 'https://7tv.io/v3/emote-sets/setcached') {
+            // slow revalidation: with SWR the reader must NOT wait for it
+            await new Promise(r => setTimeout(r, 50));
+            return { ok: true, json: async () => ({ emotes: [{ id: 'bg', name: 'BgEmote' }] }) };
+        }
+        if (u.endsWith('/emotes/manifest.json')) {
+            return { ok: true, json: async () => ({ emotes: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } }) };
+        }
+        throw new Error(`unexpected fetch ${u}`);
+    };
+    try {
+        _setEmoteManifest({});
+        state.settings.emoteSetId = 'setcached';
+        await refreshEmoteManifest();
+        assert.equal(getEmoteUrl('CachedEmote'), 'https://cdn.7tv.app/emote/cached/2x.webp',
+            'persisted set adopted at any age — before the slow revalidate resolves');
+        assert.equal(getEmoteUrl('BgEmote'), null, 'the background fetch has not been awaited');
+        assert.equal(getEmoteUrl('monkaS'), 'https://cdn.betterttv.net/emote/b/2x.webp', 'builtin still merged');
+        await new Promise(r => setTimeout(r, 80));   // let the background revalidate land
+        assert.equal(getEmoteUrl('BgEmote'), 'https://cdn.7tv.app/emote/bg/2x.webp', 'background swap-in');
+        const stored = await SillyTavern.libs.localforage.getItem(LF_7TV_KEY);
+        assert.equal(stored.map.BgEmote, 'https://cdn.7tv.app/emote/bg/2x.webp', 'fresh manifest persisted');
+    } finally {
+        globalThis.fetch = realFetch;
+        await SillyTavern.libs.localforage.removeItem(LF_7TV_KEY);
+        _setEmoteManifest({});
+    }
+});
+
+test('SWR: a failed background revalidate keeps the cached set serving', async () => {
+    await SillyTavern.libs.localforage.setItem(LF_7TV_KEY, {
+        ts: Date.now() - 3 * 24 * 60 * 60 * 1000,
+        map: { KeptEmote: 'https://cdn.7tv.app/emote/kept/2x.webp' },
+    });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u.includes('7tv.io')) throw new Error('network dead');
+        if (u.endsWith('/emotes/manifest.json')) return { ok: true, json: async () => ({ emotes: {} }) };
+        throw new Error(`unexpected fetch ${u}`);
+    };
+    try {
+        _setEmoteManifest({});
+        state.settings.emoteSetId = 'setcached';
+        await refreshEmoteManifest();
+        await new Promise(r => setTimeout(r, 30));   // revalidate fails
+        assert.equal(getEmoteUrl('KeptEmote'), 'https://cdn.7tv.app/emote/kept/2x.webp',
+            'failure must NOT null the cached set');
+    } finally {
+        globalThis.fetch = realFetch;
+        await SillyTavern.libs.localforage.removeItem(LF_7TV_KEY);
+        _setEmoteManifest({});
+    }
+});
+

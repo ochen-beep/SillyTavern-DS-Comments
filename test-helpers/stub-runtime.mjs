@@ -190,9 +190,14 @@ globalThis.SillyTavern = {
             },
         },
         localforage: {
-            getItem: async () => null,
-            setItem: async () => {},
-            removeItem: async () => {},
+            // Functional in-memory store: SWR tests (emotes) seed a persisted
+            // value and expect getItem to return it. Tests needing call
+            // semantics (blocked removeItem etc.) install their own mock.
+            _store: new Map(),
+            async getItem(k) { return this._store.has(k) ? this._store.get(k) : null; },
+            async setItem(k, v) { this._store.set(k, v); return v; },
+            async removeItem(k) { this._store.delete(k); },
+            async keys() { return [...this._store.keys()]; },
         },
     },
     getContext: () => globalThis._stCtx,
