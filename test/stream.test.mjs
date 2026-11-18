@@ -334,7 +334,11 @@ test('CM: extra params ride the override top-level AND as custom_include_body (s
     freshSettings({ extraBody: '{"reasoning_effort":"none"}' });
     await generateWithProfile('p1', 'S', ['U'], '', null);
     assert.equal(seenOverride.reasoning_effort, 'none', 'top level — read by native ST sources');
-    assert.deepEqual(seenOverride.custom_include_body, { reasoning_effort: 'none' }, 'bypasses the ST server whitelist for CUSTOM sources');
+    // Server contract: mergeObjectWithYaml → yaml.parse expects a STRING
+    // (an object value throws and is silently swallowed — params are lost).
+    // JSON is a valid YAML subset.
+    assert.equal(seenOverride.custom_include_body, '{"reasoning_effort":"none"}',
+        'stringified — parses server-side and bypasses the ST whitelist for CUSTOM sources');
 });
 
 test('CM: a "stream" key in extra params is rejected BEFORE sendRequest', async () => {

@@ -178,10 +178,15 @@ export async function generateWithProfile(profileIdOrName, systemPrompt, userMes
     // double packet rides the 5th sendRequest argument — top-level keys are
     // read by native ST sources, custom_include_body bypasses the ST server
     // whitelist for CUSTOM sources (without it, keys like reasoning_effort
-    // never reach the provider). The structured schema wins over a user
-    // json_schema mixin: the setting is a deliberate transport-level feature.
+    // never reach the provider). The schema wins over a user json_schema
+    // mixin: the setting is a deliberate transport-level feature.
+    //
+    // custom_include_body MUST be a STRING: the ST server feeds it to
+    // mergeObjectWithYaml → yaml.parse, and an object value throws
+    // ("source is not a string"), silently swallowed — the params never
+    // reach the provider. JSON is a valid YAML subset.
     const extra = parseExtraBody(state.settings.extraBody);
-    const override = Object.keys(extra).length ? { ...extra, custom_include_body: extra } : {};
+    const override = Object.keys(extra).length ? { ...extra, custom_include_body: JSON.stringify(extra) } : {};
     if (structured) override.json_schema = structured.json_schema;
 
     let response;
