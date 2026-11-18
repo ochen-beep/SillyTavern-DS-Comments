@@ -824,6 +824,12 @@ export function flushApiKey() {
     return _persistApiKey.flush?.();
 }
 
+/** Drop the in-memory key mirror (onClean): the next getApiKey re-reads
+ *  localforage, and the debounced write can no longer resurrect a deleted key. */
+export function resetApiKeyCache() {
+    _apiKeyCache = null;
+}
+
 // ── Media provider key storage (Giphy; same contract as LF_API_KEY) ──
 
 let _giphyKeyCache = null;
@@ -854,6 +860,11 @@ export function setGiphyKey(key) {
 /** Flush the pending giphy-key write (blur / visibilitychange). */
 export function flushGiphyKey() {
     return _persistGiphyKey.flush?.();
+}
+
+/** Drop the in-memory Giphy key mirror (onClean) — same contract as resetApiKeyCache. */
+export function resetGiphyKeyCache() {
+    _giphyKeyCache = null;
 }
 
 // ── Network helper: fetch with a hard timeout ──

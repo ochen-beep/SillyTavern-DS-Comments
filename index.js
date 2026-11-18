@@ -5,10 +5,11 @@
  */
 
 import {
-    state, MODULE_NAME, DISPLAY_NAME, META_KEY, LF_PROMPTS, LF_API_KEY, LF_SOUND, LF_PINNED, LF_EVENTLOG,
+    state, MODULE_NAME, DISPLAY_NAME, META_KEY, LF_PROMPTS, LF_API_KEY, LF_GIPHY_KEY, LF_SOUND, LF_PINNED, LF_EVENTLOG,
     defaultSettings, FOLDER_NAME,
     loadSettings, saveSettings, flushSettings, getCtx, log, trace, warn, error, tr,
     setApiKey, flushApiKey, setGiphyKey, getGiphyKey, flushGiphyKey, showConfirmModal, showInputModal, debounce, bumpGenerationEpoch,
+    resetApiKeyCache, resetGiphyKeyCache,
     observePersistence, dumpRestoreLog, clearRestoreLog, collectRuntimeInfo,
     dumpDebugLog, clearDebugLog,
 } from './src/core.js';
@@ -136,9 +137,15 @@ export async function onClean() {
     // transactions regardless of key count; allSettled so one failure does
     // not abort the rest.
     try {
+        // Drop the in-memory key mirrors FIRST: the debounced key writers read
+        // them, so without this a pending write could re-persist a key after
+        // the removal below (and LF_GIPHY_KEY must be deleted alongside
+        // LF_API_KEY — Clean means ALL stored secrets).
+        resetApiKeyCache();
+        resetGiphyKeyCache();
         const keys = await SillyTavern.libs.localforage.keys();
         const targets = keys.filter(k =>
-            k === LF_PROMPTS || k === LF_API_KEY || k === LF_PINNED || k === LF_EVENTLOG || k.startsWith(LF_SOUND));
+            k === LF_PROMPTS || k === LF_API_KEY || k === LF_GIPHY_KEY || k === LF_PINNED || k === LF_EVENTLOG || k.startsWith(LF_SOUND));
         await Promise.allSettled(
             targets.map(k => SillyTavern.libs.localforage.removeItem(k)));
     } catch (e) { error('localforage cleanup error:', e); }
@@ -416,7 +423,10 @@ async function syncPanelToSettings() {
         await restoreFeedForCurrentContext();
         if (isCurrentOpenPanel(panelToken)) {
             initPostScrollObserver();
-            if (!state.generationInProgress) generateFeed(null, null, false);
+            // Only auto-generate when the user opted into automatic
+            // commentary — toggling the extension on is not consent for a
+            // paid API call (autoUpdate=false users get the empty CTA).
+            if (state.settings.autoUpdate && !state.generationInProgress) generateFeed(null, null, false);
         }
     } else {
         if (bar) syncPanelVisibility();
