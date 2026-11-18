@@ -71,8 +71,13 @@ export function createFeedController({ getFeedElement, onGenerate, isFeedRendere
     function replace(html) {
         const safe = sanitize(html);
         const feed = getFeedElement();
-        if (!feed || (feed._dscLastHtml === safe && feed.innerHTML === safe)) return false;
-        feed._dscLastHtml = safe;
+        // Dedup on the sanitized string only. Comparing feed.innerHTML too
+        // looked safer but broke for every media feed: after the upgrade
+        // below innerHTML !== safe, so media feeds rebuilt (and re-fade-in)
+        // on every show. The feed DOM has a single owner — this function —
+        // so a divergence between _dscLastHtml and the live DOM can only be
+        // self-inflicted (the next replace() call repairs it anyway).
+        if (!feed || feed._dscLastHtml === safe) return false;
         feed.innerHTML = safe;
         // Media placeholders (data-dsc-media-src survive sanitize by design)
         // become real <img> elements here — after sanitization, for every
@@ -80,6 +85,7 @@ export function createFeedController({ getFeedElement, onGenerate, isFeedRendere
         // stub elements without querySelectorAll.
         upgradeMediaPlaceholders(feed);
         bindMediaLightbox(feed);
+        feed._dscLastHtml = safe;
         feed.scrollTop = 0;
         // While the feed has no layout box the scrollTop write above is a spec
         // no-op, and Chromium restores the hide-time offset at reveal — a feed
