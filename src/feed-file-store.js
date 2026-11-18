@@ -48,6 +48,10 @@ let _mirror = null;            // { entries: { [sendDate]: payload } }
 let _loadedKey = null;         // file key the mirror was loaded for
 let _loadedChatId = null;
 let _loadSequence = 0;
+// Server state unknown (load failed / fork could not read or write its target):
+// every write path gates on this — a full-document upload from an empty mirror
+// would permanently erase the server file's real contents.
+let _readOnly = false;
 let _writeChain = Promise.resolve();
 // Monotonic revision of the in-memory mirror: bumped on every load and every
 // mirror mutation. The generator's fingerprint cache keys on it — threads
@@ -242,6 +246,9 @@ function emptyMirror() {
 export async function loadFeedStore() {
     const ctx = getCtx();
     const sequence = ++_loadSequence;
+    // A fresh load starts writable: the previous chat's read-only state does
+    // not carry over, and a successful load below proves the server is back.
+    _readOnly = false;
     if (!ctx?.chatId) {
         _mirror = null;
         _loadedKey = null;
@@ -270,9 +277,12 @@ export async function loadFeedStore() {
         }
         if (sequence !== _loadSequence) return;
         if (!parentReadOk) {
+            // The parent's contents are unknown — never write anything that
+            // could ride chatFileKey(ctx) (= the parent's guid) to the server.
             _mirror = { entries: {} };
             _loadedKey = null;
             _loadedChatId = ctx.chatId;
+            _readOnly = true;
             setStorageDiag('load', { loaded: false, result: 'error', file: parentKey, entryCount: 0, gcDropped: 0, error: 'fork-parent-read' });
             return;
         }
@@ -288,8 +298,12 @@ export async function loadFeedStore() {
             const persisted = await schedulePersist({ ctx, key: newKey, mirror: _mirror });
             if (!persisted) {
                 recordEvent('error', `event=feed_fork result=error chat=${ctx.chatId} source=${parentKey || 'none'} target=${newKey} error=target-write`);
+                // The branch file may or may not exist now; the guid marker was
+                // not minted, so writes would fall back to the PARENT's key —
+                // which must never receive this branch's mirror.
                 _mirror = emptyMirror();
                 _loadedKey = null;
+                _readOnly = true;
                 return;
             }
         }
@@ -322,9 +336,14 @@ export async function loadFeedStore() {
             doc = fallbackDoc;
         }
     } catch (e) {
-        warn('loadFeedStore: read failed — starting with empty mirror:', e?.message || e);
+        warn('loadFeedStore: read failed — session is read-only until a successful load:', e?.message || e);
         recordEvent('warn', `event=feed_load chat=${ctx.chatId} file=${mainKey} result=error error=${e?.message || e}`);
         setStorageDiag('load', { loaded: true, result: 'error', file: mainKey, entryCount: 0, gcDropped: 0, error: String(e?.message || e) });
+        // The server file's contents are unknown: the next full-document
+        // upload from an empty mirror would erase them. Gate every write
+        // path until a later load succeeds (404 is not an error — readFile
+        // returns null and the empty mirror below is then the truth).
+        _readOnly = true;
     }
     if (sequence !== _loadSequence) return;
     _mirror = doc ? { entries: doc.entries } : emptyMirror();
@@ -409,6 +428,13 @@ function flushPendingUpload() {
 }
 
 function schedulePersist({ ctx = getCtx(), key = _loadedKey ?? chatFileKey(ctx), mirror = _mirror } = {}) {
+    // Server state unknown (failed load / failed fork): a full-document
+    // upload from this mirror would erase the real file. Reads stay live,
+    // writes are refused until the next loadFeedStore proves the server.
+    if (_readOnly) {
+        recordEvent('warn', `event=feed_write_blocked chat=${ctx?.chatId || 'none'} key=${key} reason=read-only`);
+        return Promise.resolve(false);
+    }
     if (_pendingUpload && _pendingUpload.key === key) {
         // Coalesce: keep the earliest promise and schedule-time chain, refresh
         // the live mirror/ctx — the timer serializes the LATEST state.
@@ -509,6 +535,7 @@ export function getFeedSlot(msgId, swipeIdx) {
  */
 export function setFeedSlot(msgId, swipeIdx, html, generationFp = null, threads = null) {
     const ctx = getCtx();
+    if (_readOnly) return false;   // server state unknown — see schedulePersist
     // A render from a newly opened chat must never write through the previous
     // chat's mirror while its CHAT_CHANGED load is still in flight.
     if (_loadedChatId && String(_loadedChatId) !== String(ctx?.chatId ?? '')) {
@@ -577,6 +604,7 @@ export function pruneOrphanedEntries(ctx = getCtx()) {
     for (const k of Object.keys(_mirror.entries)) {
         if (!live.has(k)) { delete _mirror.entries[k]; dropped++; }
     }
+    if (dropped) _mirrorRevision++;
     return dropped;
 }
 
@@ -590,6 +618,7 @@ export function dropSlotEntry(msgId, swipeIdx, deadKey) {
     }
     if (!key || !(key in _mirror.entries)) return false;
     delete _mirror.entries[key];
+    _mirrorRevision++;
     const ctx = getCtx();
     schedulePersist({ ctx, key: _loadedKey ?? chatFileKey(ctx), mirror: _mirror });
     return true;
@@ -601,6 +630,7 @@ export function dropSlotEntry(msgId, swipeIdx, deadKey) {
  */
 export function clearFeedFile() {
     if (!_mirror) return;
+    if (_readOnly) return;   // the server file's state is unknown — must not delete
     _mirror.entries = {};
     const ctx = getCtx();
     const key = _loadedKey ?? chatFileKey(ctx);
@@ -673,6 +703,7 @@ function migrateV1Posts(ctx) {
         delete store.posts;
         return;
     }
+    _mirrorRevision++;
 
     trace(`feed-file-store: migrating v1 posts → file (${lifted} entries)`);
     recordEvent('log', `event=feed_migration result=started chat=${ctx?.chatId || 'none'} entries=${lifted}`);
@@ -765,6 +796,7 @@ export function _resetFeedFileStore() {
     _loadedKey = null;
     _loadedChatId = null;
     _loadSequence = 0;
+    _readOnly = false;
     _writeChain = Promise.resolve();
     _mirrorRevision = 0;
     Object.assign(_storageDiag, { lastOperation: null, loaded: false, result: null, file: null, entryCount: 0, gcDropped: 0, at: null, error: null });

@@ -66,6 +66,54 @@ describe('loadFeedStore', () => {
         assert.ok(feedStoreSnapshot().loaded);
     });
 
+    test('read failure → writes are refused until a successful reload (server file untouched)', async () => {
+        globalThis._stCtx.chatId = 'c1';
+        globalThis._stCtx.chatMetadata.dscomments_commentary = { guid: 'gguid-ro' };
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        globalThis._stFiles['dsc_gguid-ro.json'] = JSON.stringify({
+            v: _STORE_VERSION,
+            entries: { '2026-08-19T10:00:00.000Z': { v: _STORE_VERSION, html: 'precious', ts: 1 } },
+        });
+        const origFetch = globalThis.fetch;
+        globalThis.fetch = async () => { throw new Error('server down'); };
+        await loadFeedStore();          // read failed → read-only session
+        globalThis.fetch = origFetch;
+        const written = setFeedSlot('0', 0, '<p>fresh</p>', 'fp-ro');
+        await _flushWriteChain();
+        assert.equal(written, false, 'setFeedSlot refuses while read-only');
+        const doc = JSON.parse(globalThis._stFiles['dsc_gguid-ro.json']);
+        assert.equal(doc.entries['2026-08-19T10:00:00.000Z'].html, 'precious', 'server file untouched');
+        // A later successful load clears the read-only gate:
+        await loadFeedStore();
+        assert.equal(setFeedSlot('0', 0, '<p>fresh</p>', 'fp-ro2'), true);
+        await _flushWriteChain();
+    });
+
+    test('fork parent-read failure → the parent file is never written from the branch', async () => {
+        globalThis._stCtx.chatId = 'branch-ro';
+        globalThis._stCtx.chatMetadata = {
+            main_chat: 'parent',
+            dscomments_commentary: { guid: 'gparent-ro' },
+        };
+        globalThis._stCtx.chat = [makeMsg({ swipe_info: [slotInfo('2026-08-19T10:00:00.000Z')] })];
+        globalThis._stFiles['dsc_gparent-ro.json'] = JSON.stringify({
+            v: _STORE_VERSION,
+            entries: { '2026-08-19T10:00:00.000Z': { v: _STORE_VERSION, html: 'parent-feed', ts: 1 } },
+        });
+        const origFetch = globalThis.fetch;
+        globalThis.fetch = async () => { throw new Error('server down'); };
+        await loadFeedStore();          // fork parent read failed → read-only, guid NOT minted
+        globalThis.fetch = origFetch;
+        assert.equal(globalThis._stCtx.chatMetadata.dscomments_commentary.guid, 'gparent-ro',
+            'guid stays the inherited parent guid (fork not marked handled)');
+        const written = setFeedSlot('0', 0, '<p>branch feed</p>', 'fp-branch');
+        await _flushWriteChain();
+        assert.equal(written, false, 'writes blocked — they would target the parent key');
+        const doc = JSON.parse(globalThis._stFiles['dsc_gparent-ro.json']);
+        assert.equal(doc.entries['2026-08-19T10:00:00.000Z'].html, 'parent-feed',
+            'parent file untouched by the failed branch');
+    });
+
     test('existing file loads into mirror; reads are sync afterwards', async () => {
         globalThis._stCtx.chatId = 'c1';
         globalThis._stCtx.chatMetadata.dscomments_commentary = { guid: 'gguid1' };
