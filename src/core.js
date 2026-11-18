@@ -346,6 +346,25 @@ export function escapeHtml(str) {
 // gradient nicknames on an ST bundle.
 const _sanitizeCache = new Map();
 const _sanitizeMax = 64;
+// style attributes stay allowed ONLY for the --dsc-nick-* custom properties
+// the renderer emits; everything else in a style attribute is a CSS-exfil/
+// defacement vector (background:url() fetches on render — verified live).
+// Registered once as a DOMPurify HOOK: config keys like
+// BEFORE_SANITIZE_ATTRIBUTES are not a thing — addHook is the only API.
+let _styleHookRegistered = false;
+function _registerStyleAllowHook(DOMPurify) {
+    if (_styleHookRegistered || typeof DOMPurify.addHook !== 'function') return;
+    DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
+        try {
+            const style = node?.getAttribute?.('style');
+            if (typeof style !== 'string' || !style) return;
+            const kept = style.match(/--dsc-nick-[a-z0-9-]+\s*:\s*[^;]+;?/gi) ?? [];
+            if (kept.length) node.setAttribute('style', kept.join(' '));
+            else node.removeAttribute('style');
+        } catch { /* hook runs per-node; a failure must not abort sanitization */ }
+    });
+    _styleHookRegistered = true;
+}
 export function sanitize(html) {
     try {
         if (_sanitizeCache.has(html)) {
@@ -354,7 +373,9 @@ export function sanitize(html) {
             _sanitizeCache.set(html, v);
             return v;
         }
-        const clean = SillyTavern.libs.DOMPurify.sanitize(html, {
+        const DOMPurify = SillyTavern.libs.DOMPurify;
+        _registerStyleAllowHook(DOMPurify);
+        const clean = DOMPurify.sanitize(html, {
         // Forbid media/link tags so a prompt-injected model can't emit tracking
         // pixels (<img>), phishing links (<a>), or media embeds into the panel.
         // DOMPurify already strips scripts/event-handlers by default; this
@@ -367,19 +388,7 @@ export function sanitize(html) {
         // and the renderer's paths are constants).
         FORBID_TAGS: ['img', 'a', 'video', 'audio', 'source', 'iframe', 'object', 'embed',
             'form', 'input', 'button', 'textarea', 'select', 'template'],
-        ADD_TAGS: ['svg'],        // style attributes stay allowed ONLY for the --dsc-nick-* custom
-        // properties the renderer emits; everything else in a style attribute
-        // is a CSS-exfil/defacement vector (background:url() fetches on
-        // render, verified live).
-        BEFORE_SANITIZE_ATTRIBUTES: (node) => {
-            try {
-                const style = node?.getAttribute?.('style');
-                if (typeof style !== 'string' || !style) return;
-                const kept = style.match(/--dsc-nick-[a-z0-9-]+\s*:\s*[^;]+;?/gi) ?? [];
-                if (kept.length) node.setAttribute('style', kept.join(' '));
-                else node.removeAttribute('style');
-            } catch { /* hook runs per-node; a failure must not abort sanitization */ }
-        },
+        ADD_TAGS: ['svg'],
     });
         if (_sanitizeCache.size >= _sanitizeMax) {
             _sanitizeCache.delete(_sanitizeCache.keys().next().value);
