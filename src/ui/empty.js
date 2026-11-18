@@ -38,13 +38,16 @@ export function renderEmptyStateHTML(reason) {
             <div class="dsc_empty_sub">${tr('Enable it in the extension settings.', 'dscomments.empty.disabledHint')}</div>
         </div>`;
     }
-    // empty + enabled → "Generate" CTA
+    // empty + enabled → "Generate" CTA.
+    // A div, not a button: buttons are FORBID_TAGGED in sanitize() (a model-
+    // injected <form><button> phish is real DOM otherwise), and this CTA is
+    // trusted renderer output — role="button" keeps it accessible.
     return `<div class="dsc_empty">
         ${iconHtml('message', { size: 32 })}
         <div class="dsc_empty_title">${tr('Commentary for the scene will appear here', 'dscomments.empty.noFeedTitle')}</div>
         <div class="dsc_empty_sub">${tr('Click to generate manually.', 'dscomments.empty.noFeedHint')}</div>
-        <button class="dsc_empty_cta" id="dscEmptyGenerate" type="button">
+        <div class="dsc_empty_cta" id="dscEmptyGenerate" role="button" tabindex="0">
             ${iconHtml('sparkles', { size: 16 })} ${tr('Generate', 'dscomments.action.generate')}
-        </button>
+        </div>
     </div>`;
 }

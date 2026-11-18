@@ -155,15 +155,35 @@ globalThis.SillyTavern = {
 
         // DOMPurify by default and is not modeled here.
         DOMPurify: {
+            // Apply the BEFORE_SANITIZE_ATTRIBUTES hook the way real DOMPurify
+            // would (per node, before attribute sanitization): the tests build
+            // no real DOM, so approximate by running the hook's style-attr
+            // regex over the HTML string. Keeps the --dsc-nick-* allow-list
+            // contract visible to tests.
             sanitize: (html, cfg) => {
+                let out = String(html ?? '');
+                const hook = cfg?.BEFORE_SANITIZE_ATTRIBUTES;
+                if (typeof hook === 'function') {
+                    // emulate the hook: strip style attrs down to --dsc-nick-*
+                    out = out.replace(/(<[a-z]+)\s+style="([^"]*)"/gi, (_m, tag, style) => {
+                        const fakeNode = {
+                            getAttribute: (n) => n === 'style' ? style : null,
+                            setAttribute: (n, v) => { if (n === 'style') style = v; },
+                            removeAttribute: (n) => { if (n === 'style') style = ''; },
+                        };
+                        try { hook(fakeNode); } catch { /* as real DOMPurify: never abort */ }
+                        const next = typeof style === 'string' ? style : '';
+                        return next ? `${tag} style="${next}"` : tag;
+                    });
+                }
                 const tags = cfg?.FORBID_TAGS;
                 if (Array.isArray(tags) && tags.length > 0) {
-                    return String(html ?? '').replace(
+                    out = out.replace(
                         new RegExp(`<(/?)(${tags.join('|')})(\\s[^>]*)?>`, 'gi'),
                         '',
                     );
                 }
-                return String(html ?? '');
+                return out;
             },
         },
         localforage: {

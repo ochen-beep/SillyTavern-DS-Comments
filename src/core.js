@@ -354,14 +354,33 @@ export function sanitize(html) {
             _sanitizeCache.set(html, v);
             return v;
         }
+        const clean = SillyTavern.libs.DOMPurify.sanitize(html, {
         // Forbid media/link tags so a prompt-injected model can't emit tracking
         // pixels (<img>), phishing links (<a>), or media embeds into the panel.
-        // DOMPurify already strips scripts/event-handlers by default; this closes
-        // the media/link gap. The renderer only produces div/span/strong/em/code/
-        // del/br, so legitimate output is unchanged.
-        const clean = SillyTavern.libs.DOMPurify.sanitize(html, {
-            FORBID_TAGS: ['img', 'a', 'video', 'audio', 'source', 'iframe', 'object', 'embed'],
-        });
+        // DOMPurify already strips scripts/event-handlers by default; this
+        // closes the media/link gap PLUS form/phishing markup (a model-supplied
+        // <form><input> phish renders as real DOM otherwise — verified live on
+        // the ST DOMPurify bundle). The feed's own inline <svg> icons are
+        // trusted renderer output and must survive — ALLOW them explicitly
+        // (real DOMPurify's default profile would strip svg; ADD_TAGS wins
+        // over the model text because model svg is still parser-hostile here
+        // and the renderer's paths are constants).
+        FORBID_TAGS: ['img', 'a', 'video', 'audio', 'source', 'iframe', 'object', 'embed',
+            'form', 'input', 'button', 'textarea', 'select', 'template'],
+        ADD_TAGS: ['svg'],        // style attributes stay allowed ONLY for the --dsc-nick-* custom
+        // properties the renderer emits; everything else in a style attribute
+        // is a CSS-exfil/defacement vector (background:url() fetches on
+        // render, verified live).
+        BEFORE_SANITIZE_ATTRIBUTES: (node) => {
+            try {
+                const style = node?.getAttribute?.('style');
+                if (typeof style !== 'string' || !style) return;
+                const kept = style.match(/--dsc-nick-[a-z0-9-]+\s*:\s*[^;]+;?/gi) ?? [];
+                if (kept.length) node.setAttribute('style', kept.join(' '));
+                else node.removeAttribute('style');
+            } catch { /* hook runs per-node; a failure must not abort sanitization */ }
+        },
+    });
         if (_sanitizeCache.size >= _sanitizeMax) {
             _sanitizeCache.delete(_sanitizeCache.keys().next().value);
         }
