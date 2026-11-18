@@ -68,10 +68,13 @@ test('buildChatHistory: idx out of swipes range falls back to msg.mes', () => {
     assert.ok(html.includes('fallback mes'));
 });
 
-test('buildChatHistory: includeChatHistory=false returns empty', () => {
+test('buildChatHistory: includeChatHistory=false keeps the anchor, drops [Previously]', () => {
     state.settings.includeChatHistory = false;
-    globalThis._stCtx.chat = [ai('x', 0)];
-    assert.equal(_testBuildChatHistory(0, 0), '');
+    globalThis._stCtx.chat = [ai('old chapter', 0), ai('current chapter text', 0)];
+    const html = _testBuildChatHistory(1, 0);
+    assert.ok(html.includes('Current chapter'), 'the anchor must survive a disabled history');
+    assert.ok(html.includes('current chapter text'));
+    assert.ok(!html.includes('old chapter'), 'earlier chapters stay gated');
 });
 
 // ── Community memory: past comment threads in the prompt ──
@@ -630,7 +633,7 @@ test('generateFeed attached scope without cache adds no fictional-world block', 
     });
 
     // Documented degradation: no fresh activation data → no lore block, no error.
-    assert.equal(userPrompt, 'Generate the commentary now.');
+    assert.equal(userPrompt, '[Current chapter:\nAI: a1]');
 });
 
 test('generateFeed skips lore resolution entirely on a fresh chat (lore disabled by default)', async () => {
@@ -644,7 +647,7 @@ test('generateFeed skips lore resolution entirely on a fresh chat (lore disabled
         return validResponse;
     });
 
-    assert.equal(userPrompt, 'Generate the commentary now.');
+    assert.equal(userPrompt, '[Current chapter:\nAI: a1]');
 });
 
 test('generateFeed skips lore resolution when lore is explicitly disabled', async () => {
@@ -662,7 +665,7 @@ test('generateFeed skips lore resolution when lore is explicitly disabled', asyn
         return validResponse;
     });
 
-    assert.equal(userPrompt, 'Generate the commentary now.');
+    assert.equal(userPrompt, '[Current chapter:\nAI: a1]');
 });
 
 test('generateFeed manual mode loads duplicate-UID identities without activation and expands macros', async () => {
@@ -692,7 +695,7 @@ test('generateFeed empty manual lore adds no fictional-world block', async () =>
         userPrompt = userMessages.join('\n\n');
         return validResponse;
     });
-    assert.equal(userPrompt, 'Generate the commentary now.');
+    assert.equal(userPrompt, '[Current chapter:\nAI: a1]');
 });
 
 test('generateFeed logs manual identifiers and missing refs without lore content', async () => {

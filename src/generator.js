@@ -168,7 +168,9 @@ function readSwipeText(msg, swipeIdx) {
 }
 
 /**
- * Build chat history block for context (optional — gated by includeChatHistory).
+ * Build chat history block for context. The anchor ([Current chapter] — the
+ * post being commented on) is ALWAYS included: without it the model reacts to
+ * nothing. includeChatHistory gates only [Previously].
  *
  * anchorSwipeIdx: the swipe index whose text the anchor message should use.
  *   Defaults to msg.swipe_id when omitted (pre-existing behaviour for callers
@@ -179,21 +181,29 @@ function buildChatHistoryParts(anchorMsgId, anchorSwipeIdx, ctx = getCtx()) {
     try {
         const settings = state.settings;
         const chat = ctx.chat;
-        if (!chat || !settings.includeChatHistory) return { earlier: [], anchor: '' };
+        if (!chat) return { earlier: [], anchor: '' };
+        // Anchor by explicit index: a system/hidden message at the anchor
+        // position must still anchor the prompt (it IS the post being read).
+        const anchorIdx = anchorMsgId !== undefined && anchorMsgId !== null ? parseInt(anchorMsgId) : -1;
+        let anchor = '';
+        if (anchorIdx >= 0 && chat[anchorIdx]) {
+            const m = chat[anchorIdx];
+            const anchorName = m.is_user ? (ctx.name1 || 'User') : (m.name || 'AI');
+            const anchorText = extractText(readSwipeText(m, anchorSwipeIdx));
+            anchor = `[Current chapter:\n${anchorName}: ${anchorText}]`;
+        }
+        if (!settings.includeChatHistory) return { earlier: [], anchor };
         const depth = Math.max(2, parseInt(settings.contextDepth) || 4);
-        const endIdx = anchorMsgId !== undefined && anchorMsgId !== null ? parseInt(anchorMsgId) + 1 : chat.length;
+        const endIdx = anchorIdx >= 0 ? anchorIdx + 1 : chat.length;
         const recent = chat.slice(0, endIdx).filter(m => !m.is_system && !m.is_hidden).slice(-depth);
-        if (!recent.length) return { earlier: [], anchor: '' };
+        if (!recent.length) return { earlier: [], anchor };
         const fmtLine = m => {
             const name = m.is_user ? (ctx.name1 || 'User') : (m.name || 'AI');
             return `${name}: ${extractText(m.mes || '')}`;
         };
-        const anchor = recent[recent.length - 1];
-        const anchorName = anchor.is_user ? (ctx.name1 || 'User') : (anchor.name || 'AI');
-        const anchorText = extractText(readSwipeText(anchor, anchorSwipeIdx));
         return {
             earlier: recent.slice(0, -1).map(fmtLine),
-            anchor: `[Current chapter:\n${anchorName}: ${anchorText}]`,
+            anchor,
         };
     } catch { return { earlier: [], anchor: '' }; }
 }
