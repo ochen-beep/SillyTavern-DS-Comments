@@ -20,6 +20,9 @@ const GIPHY_SEARCH_URL = 'https://api.giphy.com/v1/gifs/search';
 const GIPHY_STICKER_SEARCH_URL = 'https://api.giphy.com/v1/stickers/search';
 const MEMEGEN_TEMPLATES_URL = 'https://api.memegen.link/templates/';
 const MEMEGEN_IMAGE_URL = 'https://api.memegen.link/images/';
+// Delay before the one transport-level retry (flapped request, 5xx-less
+// network blip). A module constant: tests tick past it without sleeping.
+const GIPHY_NET_RETRY_MS = 1500;
 
 // Only these CDN prefixes may ever reach the feed DOM. The resolver validates
 // every URL against them BEFORE attaching it to a message, and the renderer's
@@ -274,13 +277,27 @@ async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
         return urls;
     };
 
+    // One quick retry for transport-level failures: a flapped request must
+    // not cost the comment its gif. Abort re-throws untouched; actionable
+    // statuses (401/403 key, 429 quota) keep their upstream handling — no
+    // blind second call to a rejecting endpoint.
+    const searchWithNetRetry = async (q) => {
+        try {
+            return await search(q);
+        } catch (e) {
+            if (e?.name === 'AbortError' || Number.isInteger(e?.status)) throw e;
+            await new Promise(r => setTimeout(r, GIPHY_NET_RETRY_MS));
+            return search(q);
+        }
+    };
+
     // A zero-result search retries once with the leading words: the contract
     // asks for scene-specific phrases, and those often miss Giphy's index in
     // full while their trimmed core still hits.
-    let urls = await search(query);
+    let urls = await searchWithNetRetry(query);
     if (urls.length === 0) {
         const short = query.split(/\s+/).slice(0, 2).join(' ');
-        if (short && short.toLowerCase() !== query.toLowerCase()) urls = await search(short);
+        if (short && short.toLowerCase() !== query.toLowerCase()) urls = await searchWithNetRetry(short);
     }
     if (urls.length === 0) return null;
     return urls[Math.floor(Math.random() * urls.length)];

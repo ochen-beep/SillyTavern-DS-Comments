@@ -226,6 +226,34 @@ test('resolveCommentMedia: zero-result search retries with the leading words', a
     assert.equal(msgs[0].media.url, 'https://media.giphy.com/rescued.gif');
 });
 
+test('resolveCommentMedia: a transport failure retries once and recovers', async () => {
+    let calls = 0;
+    fetchHandler = () => {
+        calls++;
+        if (calls === 1) throw new TypeError('fetch failed');   // network flap
+        return { ok: true, json: async () => ({ data: [{ images: { downsized: { url: 'https://media.giphy.com/retried.gif' } } }] }) };
+    };
+    const msgs = [{ username: 'a', content: 'x', gif: 'cat' }];
+    const n = await resolveCommentMedia(msgs, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
+    assert.equal(calls, 2, 'exactly one transport retry');
+    assert.equal(n, 1);
+    assert.equal(msgs[0].media.url, 'https://media.giphy.com/retried.gif');
+});
+
+test('resolveCommentMedia: an actionable HTTP status does not trigger the transport retry', async () => {
+    let calls = 0;
+    fetchHandler = () => {
+        calls++;
+        const err = new Error('giphy: HTTP 403');
+        err.status = 403;
+        throw err;
+    };
+    const msgs = [{ username: 'a', content: 'x', gif: 'cat' }];
+    const n = await resolveCommentMedia(msgs, { provider: 'giphy', giphyKey: 'BAD', rating: 'medium' });
+    assert.equal(calls, 1, '403 is actionable — no blind second call');
+    assert.equal(n, 0);
+});
+
 test('resolveCommentMedia: picks a random candidate, not the fixed first result', async () => {
     fetchHandler = () => ({
         ok: true,
