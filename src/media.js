@@ -268,18 +268,21 @@ async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
         // Collect every usable candidate and take one at random — relevance order
         // is deterministic, so always taking the first attaches the identical GIF
         // to every regeneration of the same query.
-        // Variant priority: lightest FIRST. The reader stays ~1 minute; a
-        // full-size downsized gif (1–2MB) misses that window on a slow link
-        // (measured live: every >24KB body stalled at ~20KB/s), while the
-        // small variants are 10x lighter and land before the degrade tick.
-        // `downsized_small` can be a .mp4 — the <img> can't play it, so a
-        // .gif URL is required for the chip to show anything.
+        // Rendition ladder, lightest first, per the Giphy docs' display
+        // guidance: animated WEBP renditions beat any gif (several times
+        // lighter), and the downsampled variants carry only 6 frames — the
+        // lightest moving rendition of all. On a throttled link every hundred
+        // KB is minutes of drain. `downsized_small` is skipped: mp4-only, an
+        // <img> can't play it.
         const pickUrl = (images) => {
             const candidates = [
-                images?.fixed_height_small?.url,
-                images?.downsized_small?.url,
-                images?.downsized?.url,
+                images?.fixed_height_downsampled?.webp,
+                images?.fixed_height_downsampled?.url,
+                images?.fixed_height?.webp,
+                images?.fixed_height_small?.webp,
                 images?.fixed_height?.url,
+                images?.fixed_height_small?.url,
+                images?.downsized?.url,
                 images?.original?.url,
             ];
             for (const url of candidates) {
