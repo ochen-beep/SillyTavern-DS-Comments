@@ -239,10 +239,6 @@ export const raf = {
     },
     cancel(id) { _rafQueue.delete(id); },
     pending() { return _rafQueue.size; },
-    runAll() {
-        for (const fn of _rafQueue.values()) fn();
-        _rafQueue.clear();
-    },
     reset() { _rafQueue.clear(); _rafId = 1; },
 };
 
@@ -273,7 +269,6 @@ export class FakeMutationObserver {
 }
 export const observers = {
     get resize() { return [..._resizeObservers]; },
-    get mutation() { return [..._mutationObservers]; },
     reset() { _resizeObservers.length = 0; _mutationObservers.length = 0; },
 };
 

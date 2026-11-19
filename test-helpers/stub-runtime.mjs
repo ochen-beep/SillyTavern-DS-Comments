@@ -20,8 +20,9 @@ function makeEl() {
         _attrs: {},
         set innerHTML(v) { this._html = String(v ?? ''); },
         get innerHTML() { return this._html; },
-        // innerText/textContent of a live DOM strip tags; repeat without layout.
-        get innerText() { return this._html.replace(/<[^>]+>/g, ''); },
+        // textContent of a live DOM strips tags; repeat without layout.
+        // (innerText is intentionally absent: src reads textContent only,
+        // core.js extractText — a non-rendered document has innerText === textContent.)
         get textContent() { return this._html.replace(/<[^>]+>/g, ''); },
         set textContent(v) {
             this._html = String(v ?? '');

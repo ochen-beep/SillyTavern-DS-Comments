@@ -7,7 +7,7 @@
  */
 
 import {
-    install, uninstall, fakeWindow, fakeVisualViewport, fakeDocument, registerElement, clearElements,
+    install, uninstall, fakeWindow, fakeVisualViewport, fakeDocument, registerElement,
     clock, raf, observers,
 } from '../test-helpers/lifecycle-runtime.mjs';
 import { beforeEach, afterEach, test } from 'node:test';
