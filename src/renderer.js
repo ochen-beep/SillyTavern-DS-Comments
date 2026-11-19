@@ -143,24 +143,34 @@ export function upgradeMediaPlaceholders(root) {
 // renders themselves. Gifs are multi-megabyte downloads: on a slow channel N
 // parallel ones starve each other (measured live: ~2KB/s per stream → every
 // box missed its window), so gifs alone pass through a small queue.
-// Each transfer: cache-busted retries on a hard error; a transfer with ZERO
-// bytes received (dead socket or still-hanging TTFB) is kicked cache-busted
-// every ~45s, up to six kicks (~4.5 min) — a kick cannot lose buffered data
-// and unsticks dead VPN connections; a transfer that already carries image
-// data (naturalWidth > 0) is never restarted. A degraded box keeps its img
-// mounted (CSS hides it) and its late load swaps the picture over the
-// caption — at ANY moment, even long after bookkeeping closes.
+// The queue NEVER swaps a loading box for text: on a throttled link the only
+// strategy that produces pictures is patience, so a slow box keeps its
+// loading pulse until the transfer lands or the feed is torn down (the
+// fork-era behavior that outlived every later rewrite). Recovery is a kick:
+// re-assigning src cache-busted aborts the current request and starts a
+// fresh one. Triggers, each on its own clock: a hard error walks the retry
+// ladder; a transfer with ZERO bytes received (dead socket or still-hanging
+// TTFB) is kicked every ~45s — a kick cannot lose buffered data; a transfer
+// whose HEADER landed but whose body never completes gets its own, wider
+// window (the measured throttled-link failure: headers arrive at line speed
+// while bodies crawl at ~400 B/s or freeze — without this the box hangs
+// forever past its first frame). A quiet transfer is otherwise never
+// restarted: <img> has no progress events, so silence may just as well mean
+// a slow drain.
 const MAX_MEDIA_PARALLEL = 2;
 const WATCHDOG_TICK_MS = 5000;
 // All windows in ticks (1 tick = 5s), per job, counted from its OWN start.
-const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
 const STOP_TICKS = 24;      // ~2 min: fine bookkeeping ends; the box moves to the slow tail
-// Zero-byte kicks: <img> has no progress events, but naturalWidth > 0 as soon
-// as the first bytes arrive — a transfer with naturalWidth === 0 has received
-// literally nothing and is safe to restart. Kick interval counts from the
-// last attempt (initial request or previous kick), at most two kicks.
 const ZERO_BYTE_KICK_AFTER_TICKS = 9;   // ~45s of zero bytes per request → kick
-const MAX_ZERO_BYTE_KICKS = 6;          // ~4.5 min of patience, then close
+// Stalled-body window from the first decoded frame, per type: memes/stickers
+// are ~25KB files that drain in well under a minute even starved; a megabyte
+// gif needs minutes, so its window is wider and only fires on a truly dead
+// body.
+const STALL_KICK_AFTER_TICKS = { meme: 18, sticker: 18, gif: 36 };   // ~90s / ~3min
+// Kick budget: ~27 min of per-45s retries — sized to the reader's patience,
+// not to a good link's; whichever kick finally lands makes every later
+// render instant via the browser cache.
+const MAX_KICKS = 36;
 const KICK_TAIL_TICKS = 12;             // ~1m after the last kick → close bookkeeping
 // Backoff ladder after a hard error, in ticks.
 const RETRY_LADDER_TICKS = [2, 4, 5, 6];
@@ -173,54 +183,32 @@ function runMediaLoadQueue(jobs) {
     let longTail = [];   // past STOP: degraded, kept on life support (see STOP branch)
     let stopped = false;
 
-    // Swap the finished picture back in place of the caption. The img stays
-    // mounted through the stall, so only the caption is removed and the CSS
-    // class (which hides the img) is lifted.
-    const reviveOverCaption = (job) => {
-        job.node.classList?.remove?.('dsc_gif_stalled');
-        job.node.querySelector?.('.dsc_media_fallback')?.remove?.();
-        // The revival is the answer to every media_stall — it must be visible
-        // in the dump: how long after the stall the picture landed, and via
-        // which recovery path (kicks vs plain drain).
-        recordEvent('log', `event=media_revive type=${job.type} ticks=${ticks} kicks=${job.kicks} pos=${job.index + 1}/${total}`);
-    };
-
     const finishJob = (job, landed) => {
-        if (job.done) {
-            // The transfer outlived the watchdog (a lazy image scrolled into
-            // view, a slow body still draining): the reader may be looking at
-            // this exact box, so its load event still revives the caption.
-            // Only the tick bookkeeping stays closed.
-            if (landed && job.degraded) reviveOverCaption(job);
-            return;
+        const wasClosed = job.done;
+        if (!wasClosed) {
+            job.done = true;
+            active = active.filter(j => j !== job);
+            longTail = longTail.filter(j => j !== job);
         }
-        job.done = true;
-        active = active.filter(j => j !== job);
-        longTail = longTail.filter(j => j !== job);
-        if (landed) {
-            job.node.classList?.remove?.('dsc_gif_loading');
-            if (job.degraded) reviveOverCaption(job);
+        if (!landed) return;
+        job.node.classList?.remove?.('dsc_gif_loading');
+        // A landing after a stall (or after bookkeeping closed) is the answer
+        // to that stall — it must be visible in the dump: how long the
+        // picture took and via which recovery path (kicks vs plain drain).
+        if (job.stallLogged || wasClosed) {
+            recordEvent('log', `event=media_revive type=${job.type} ticks=${ticks} kicks=${job.kicks} pos=${job.index + 1}/${total}`);
         }
     };
 
-    const degradeJob = (job) => {
-        if (job.degraded || job.done) return;
-        job.degraded = true;
-        job.node.classList?.remove?.('dsc_gif_loading');
-        job.node.classList?.add?.('dsc_gif_stalled');
-        const caption = document.createElement('span');
-        caption.className = 'dsc_media_fallback';
-        caption.textContent = job.img.alt || '';
-        // The img STAYS MOUNTED (CSS hides it while .dsc_gif_stalled is set).
-        // Removing it here would cancel a native lazy load that has not
-        // started yet (the box can sit below the fold) and strand the box on
-        // its caption until a full re-render — the live failure behind the
-        // "memes only appear after F5" reports.
-        job.node.appendChild?.(caption);
-        // Degradation is the moment a "no GIF in the feed" report is born —
-        // it must be visible in the diagnostic dump; queue position shows
-        // whether the load was starved (deep in the queue) or genuinely slow.
-        recordEvent('log', `event=media_stall type=${job.type} degraded=true ticks=${ticks} pos=${job.index + 1}/${total}`);
+    const markStalled = (job) => {
+        // Crossing the stop line is the moment a "no GIF in the feed" report
+        // would be born — it must be visible in the diagnostic dump; queue
+        // position shows whether the load was starved (deep in the queue) or
+        // genuinely slow. The box itself keeps its loading pulse: no text
+        // tombstones.
+        if (job.stallLogged) return;
+        job.stallLogged = true;
+        recordEvent('log', `event=media_stall type=${job.type} ticks=${ticks} pos=${job.index + 1}/${total}`);
     };
 
     const startJob = (job) => {
@@ -243,18 +231,24 @@ function runMediaLoadQueue(jobs) {
         }
     };
 
-    const dueForKick = (job) => job.kicks < MAX_ZERO_BYTE_KICKS && !job.done
-        && (job.errored || (job.img.naturalWidth === 0 && !job.img.complete))
+    // A body that got its header but never completes: the throttled-link
+    // signature (headers at line speed, bodies strangled). Kicked per type
+    // once its window from the first decoded frame expires.
+    const stalledBody = (job) => job.img.naturalWidth > 0 && !job.img.complete
+        && job.firstByteTick !== undefined
+        && ticks - job.firstByteTick >= (STALL_KICK_AFTER_TICKS[job.type] ?? STALL_KICK_AFTER_TICKS.gif);
+    const dueForKick = (job) => job.kicks < MAX_KICKS && !job.done
+        && (job.errored || (job.img.naturalWidth === 0 && !job.img.complete) || stalledBody(job))
         && ticks - job.lastAttemptTick >= ZERO_BYTE_KICK_AFTER_TICKS;
     const doKick = (job) => {
-        // Nothing received yet (or the request errored empty): the socket is
-        // dead or the request still hangs on a memegen render. A cache-busted
-        // kick costs nothing (zero bytes buffered) and revives dead VPN
-        // connections. Counted from the last attempt so kicks never cut into
-        // the hard-error retry ladder.
+        // Cache-busted restart of the current request. For a zero-byte
+        // transfer nothing is buffered; for a stalled body the kick trades
+        // frozen bytes for a fresh connection. Counted from the last attempt
+        // so kicks never cut into the hard-error retry ladder.
         job.kicks++;
         job.lastAttemptTick = ticks;
         job.errored = false;
+        job.firstByteTick = undefined;
         job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=kick${job.kicks}`;
     };
 
@@ -268,47 +262,47 @@ function runMediaLoadQueue(jobs) {
         if (!active.length && !queue.length && !longTail.length) { clearInterval(watchdog); return; }
         for (const job of active) {
             if (imgSettled(job.img)) { finishJob(job, true); continue; }
+            if (job.img.naturalWidth > 0 && job.firstByteTick === undefined) job.firstByteTick = ticks;
             const age = ticks - job.startedTick;
             if (age >= STOP_TICKS) {
                 // Fine-grained bookkeeping ends here, but the box is NOT
                 // abandoned: it moves to the slow-service tail, where its
-                // zero-byte request keeps getting kicked and its late load
-                // still revives the caption. This is what keeps the stored
-                // browser cache filling and makes every later render instant.
+                // request keeps getting kicked on the windows above and its
+                // late load still lifts the pulse. This is what keeps the
+                // stored browser cache filling and makes every later render
+                // instant.
                 active = active.filter(j => j !== job);
-                degradeJob(job);
+                markStalled(job);
                 longTail.push(job);
                 continue;
             }
-            if (age >= DEGRADE_TICKS) degradeJob(job);
             // Retry ladder on a hard error (cache-busted: the same URL can
             // reuse the poisoned connection). A silent transfer is NEVER
-            // restarted: <img> has no progress events, so "silent" may just
-            // as well mean a slow drain — re-assigning src would abort the
-            // in-flight download and reset it to zero (the live failure:
-            // 1.5MB gifs at 20KB/s never finished while the reader watched,
-            // then drained into the cache AFTER the watchdog gave up —
-            // instantly served only on the next reload).
+            // restarted before its kick window: <img> has no progress
+            // events, so silence may just as well mean a slow drain —
+            // re-assigning src aborts the in-flight download and resets it
+            // to zero.
             if (job.errored && !job.done) {
                 const dueTicks = job.attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[job.attempts] : Infinity;
                 if (ticks - job.lastAttemptTick >= dueTicks) {
                     job.attempts++;
                     job.lastAttemptTick = ticks;
                     job.errored = false;
+                    job.firstByteTick = undefined;
                     job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=${job.attempts}`;
                 }
             } else if (dueForKick(job)) {
                 doKick(job);
             }
         }
-        // Slow-service tail: the STOP branch moved degraded jobs here. Each
-        // still-mounted request gets its own ~45s patience windows (up to
-        // MAX_ZERO_BYTE_KICKS kicks); ~1m after the last one bookkeeping
-        // closes — but the img keeps draining and a landing load still
-        // revives the caption even past that.
+        // Slow-service tail: the STOP branch moved jobs here. Each
+        // still-mounted request keeps its kick windows (up to MAX_KICKS);
+        // ~1m after the last one bookkeeping closes — but the img keeps
+        // draining and a landing load still lifts the pulse even past that.
         for (const job of longTail) {
             if (imgSettled(job.img)) { finishJob(job, true); continue; }
-            if (job.kicks >= MAX_ZERO_BYTE_KICKS
+            if (job.img.naturalWidth > 0 && job.firstByteTick === undefined) job.firstByteTick = ticks;
+            if (job.kicks >= MAX_KICKS
                 && ticks - job.lastAttemptTick >= KICK_TAIL_TICKS) {
                 finishJob(job, false);
                 continue;

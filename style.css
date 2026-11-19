@@ -744,9 +744,9 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 /* unresolved media request in a media-only comment — bracketed degradation */
 .dsc_media_fallback { opacity: 0.55; font-style: italic; }
 
-/* memegen cold-renders new caption combos server-side: a pending box shows a
-   quiet pulse instead of an empty frame; a stalled box (watchdog gave up in
-   renderer.js) degrades to its caption text via dsc_media_fallback. */
+/* memegen cold-renders new caption combos server-side, and throttled links
+   crawl on media bodies: a pending box shows a quiet pulse for as long as it
+   takes — the queue never swaps a loading box for text (renderer.js). */
 .dsc_gif_loading::after {
     content: "…";
     display: block;
@@ -757,17 +757,6 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
     animation: dsc_loading_pulse 1.4s ease-in-out infinite;
 }
 .dsc_gif_loading.dsc_gif_sticker::after { background: transparent; }
-.dsc_gif_stalled { width: auto; padding: 8px 12px; line-height: normal; }
-/* The stalled img stays mounted (renderer.js) so a native lazy load is never
-   cancelled and its late load event can revive the box; CSS does the hiding. */
-.dsc_gif_stalled .dsc_gif_img { display: none; }
-/* The caption is provisional, not final: a gentle opacity breathe (no motion,
-   vestibular-safe) tells the reader the picture is still on its way. */
-.dsc_gif_stalled .dsc_media_fallback { animation: dsc_caption_breathe 2.4s ease-in-out infinite; }
-@keyframes dsc_caption_breathe {
-    0%, 100% { opacity: 0.55; }
-    50% { opacity: 1; }
-}
 @keyframes dsc_loading_pulse {
     0%, 100% { opacity: 0.25; }
     50% { opacity: 1; }
