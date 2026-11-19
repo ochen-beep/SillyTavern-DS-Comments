@@ -319,7 +319,7 @@ test('upgradeMediaPlaceholders: memes start at once; the queue serializes only h
     assert.equal(boxes[5].child.src, '', 'gif 3 waits for a slot');
 });
 
-test('upgradeMediaPlaceholders: a zero-byte silent stall gets two kicks, then left alone', () => {
+test('upgradeMediaPlaceholders: a zero-byte stall is kicked on a slow tail, then closed', () => {
     const placeholder = makePlaceholder({
         'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
         'data-dsc-media-type': 'meme',
@@ -328,32 +328,53 @@ test('upgradeMediaPlaceholders: a zero-byte silent stall gets two kicks, then le
     const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
     upgradeMediaPlaceholders(feed);
     const img = placeholder.child;
-    const boot = () => {
-        globalThis._dscTickIntervals();
-        return String(img.src);
-    };
-    for (let tick = 1; tick <= 8; tick++) {
-        const src = boot();
-        assert.ok(!src.includes('dscr=kick'), `no kick before the 45s mark (tick ${tick})`);
-    }
-    // t=45s: zero bytes received (naturalWidth stays 0) — the socket is either
-    // dead or still waiting on the memegen render; kicking it cache-busted is
-    // free (nothing buffered yet) and unsticks dead VPN connections.
-    boot();
-    assert.ok(img.src.includes('dscr=kick1'), 'first zero-byte kick at ~45s');
-    for (let tick = 10; tick <= 17; tick++) boot();
-    assert.ok(!img.src.includes('kick2'), 'second kick waits for ~90s');
-    boot();
-    assert.ok(img.src.includes('dscr=kick2'), 'second zero-byte kick at ~90s');
-    for (let tick = 19; tick <= 24; tick++) boot();
-    assert.equal(String(img.src.match(/kick(\d)/)?.[1]), '2', 'kicks are bounded at two');
+    const slot = globalThis._dscIntervals.length - 1;
+    let tick = 0;
+    const bootTo = (target) => { while (tick < target) { tick++; globalThis._dscTickIntervals(); } };
+    const src = () => String(img.src);
+    // A request with zero bytes received is either a dead socket or a hang on
+    // the memegen render; kicking it every ~45s is free (nothing buffered)
+    // and unsticks dead VPN connections. The browser cache is the real
+    // storage: whichever kick finally lands makes every later render instant.
+    bootTo(8);
+    assert.ok(!src().includes('dscr=kick'), 'no kick before ~45s of silence');
+    bootTo(9);
+    assert.ok(src().includes('dscr=kick1'), 'kick 1 at ~45s');
+    bootTo(17);
+    assert.ok(!src().includes('kick2'), 'each kicked request gets its own ~45s of patience');
+    bootTo(18);
+    assert.ok(src().includes('dscr=kick2'), 'kick 2 at ~90s');
+    bootTo(26);
+    assert.ok(!src().includes('kick3'));
+    bootTo(27);
+    assert.ok(src().includes('dscr=kick3'), 'kick 3 at ~135s');
+    bootTo(35);
+    assert.ok(!src().includes('kick4'));
+    bootTo(36);
+    assert.ok(src().includes('dscr=kick4'), 'kick 4 at ~3m');
+    bootTo(44);
+    assert.ok(!src().includes('kick5'));
+    bootTo(45);
+    assert.ok(src().includes('dscr=kick5'), 'kick 5 at ~225s');
+    bootTo(53);
+    assert.ok(!src().includes('kick6'));
+    bootTo(54);
+    assert.ok(src().includes('dscr=kick6'), 'kick 6 at ~270s — last one');
+    bootTo(65);
+    assert.equal(src().match(/kick(\d)/)?.[1], '6', 'kicks are capped at six');
+    bootTo(66);
+    assert.equal(globalThis._dscIntervals[slot], null, 'bookkeeping closes ~1m after the last kick');
+    // Bookkeeping is closed, but the img stays mounted with its last request:
+    // whenever it lands — minutes later, after a feed swap, whenever — its
+    // load event still swaps the picture over the caption.
     img.complete = true;
     img.naturalWidth = 480;
     img._listeners.load?.();
-    assert.match(dumpEventLog(), /event=media_revive type=meme ticks=\d+ kicks=2 pos=1\/1/, 'the revival lands in the diagnostic dump');
+    assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
+    assert.match(dumpEventLog(), /event=media_revive type=meme ticks=\d+ kicks=6 pos=1\/1/, 'the revival lands in the diagnostic dump');
 });
 
-test('upgradeMediaPlaceholders: a draining transfer is never restarted through the whole window', () => {
+test('upgradeMediaPlaceholders: a draining transfer is never restarted, the tail just waits', () => {
     const placeholder = makePlaceholder({
         'data-dsc-media-src': 'https://media.giphy.com/slow-drain.gif',
         'data-dsc-media-type': 'gif',
@@ -365,15 +386,15 @@ test('upgradeMediaPlaceholders: a draining transfer is never restarted through t
     const slot = globalThis._dscIntervals.length - 1;
     // naturalWidth > 0 means image bytes are already arriving: re-assigning
     // src would abort the in-flight download and reset it to zero — the exact
-    // bug the queue was built to fix — so the src must stay untouched until
-    // the window ends.
+    // bug the queue was built to fix — so no kick may ever touch it, through
+    // the whole window and the whole slow tail after it.
     img.naturalWidth = 1;   // data is flowing; complete is still false
-    for (let tick = 1; tick <= 24; tick++) {
+    for (let tick = 1; tick <= 66; tick++) {
         globalThis._dscTickIntervals();
         assert.equal(img.src, 'https://media.giphy.com/slow-drain.gif', `no restart at tick ${tick}`);
     }
     assert.ok(placeholder._classes.has('dsc_gif_stalled'), 'the box degrades while the transfer keeps draining');
-    assert.equal(globalThis._dscIntervals[slot], null, 'bookkeeping stops at ~2 min');
+    assert.notEqual(globalThis._dscIntervals[slot], null, 'the tail keeps serving the drain until it lands or the feed dies');
 });
 
 test('upgradeMediaPlaceholders: a late load after the watchdog stopped still swaps over the caption', () => {

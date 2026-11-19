@@ -145,22 +145,23 @@ export function upgradeMediaPlaceholders(root) {
 // box missed its window), so gifs alone pass through a small queue.
 // Each transfer: cache-busted retries on a hard error; a transfer with ZERO
 // bytes received (dead socket or still-hanging TTFB) is kicked cache-busted
-// twice (~45s, ~90s) — a kick cannot lose buffered data and unsticks dead
-// VPN connections; a transfer that already carries image data
-// (naturalWidth > 0) is never restarted. A degraded box keeps its img
+// every ~45s, up to six kicks (~4.5 min) — a kick cannot lose buffered data
+// and unsticks dead VPN connections; a transfer that already carries image
+// data (naturalWidth > 0) is never restarted. A degraded box keeps its img
 // mounted (CSS hides it) and its late load swaps the picture over the
-// caption, even after the watchdog stops.
+// caption — at ANY moment, even long after bookkeeping closes.
 const MAX_MEDIA_PARALLEL = 2;
 const WATCHDOG_TICK_MS = 5000;
 // All windows in ticks (1 tick = 5s), per job, counted from its OWN start.
 const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
-const STOP_TICKS = 24;      // ~2 min: bookkeeping stops; a late load still revives the caption
+const STOP_TICKS = 24;      // ~2 min: fine bookkeeping ends; the box moves to the slow tail
 // Zero-byte kicks: <img> has no progress events, but naturalWidth > 0 as soon
 // as the first bytes arrive — a transfer with naturalWidth === 0 has received
 // literally nothing and is safe to restart. Kick interval counts from the
 // last attempt (initial request or previous kick), at most two kicks.
-const ZERO_BYTE_KICK_AFTER_TICKS = 9;   // ~45s with zero bytes → kick
-const MAX_ZERO_BYTE_KICKS = 2;
+const ZERO_BYTE_KICK_AFTER_TICKS = 9;   // ~45s of zero bytes per request → kick
+const MAX_ZERO_BYTE_KICKS = 6;          // ~4.5 min of patience, then close
+const KICK_TAIL_TICKS = 12;             // ~1m after the last kick → close bookkeeping
 // Backoff ladder after a hard error, in ticks.
 const RETRY_LADDER_TICKS = [2, 4, 5, 6];
 
@@ -169,6 +170,7 @@ function runMediaLoadQueue(jobs) {
     let ticks = 0;
     let queue = jobs.filter(j => j.type === 'gif');
     let active = [];
+    let longTail = [];   // past STOP: degraded, kept on life support (see STOP branch)
     let stopped = false;
 
     // Swap the finished picture back in place of the caption. The img stays
@@ -194,6 +196,7 @@ function runMediaLoadQueue(jobs) {
         }
         job.done = true;
         active = active.filter(j => j !== job);
+        longTail = longTail.filter(j => j !== job);
         if (landed) {
             job.node.classList?.remove?.('dsc_gif_loading');
             if (job.degraded) reviveOverCaption(job);
@@ -240,18 +243,43 @@ function runMediaLoadQueue(jobs) {
         }
     };
 
+    const dueForKick = (job) => job.kicks < MAX_ZERO_BYTE_KICKS && !job.done
+        && (job.errored || (job.img.naturalWidth === 0 && !job.img.complete))
+        && ticks - job.lastAttemptTick >= ZERO_BYTE_KICK_AFTER_TICKS;
+    const doKick = (job) => {
+        // Nothing received yet (or the request errored empty): the socket is
+        // dead or the request still hangs on a memegen render. A cache-busted
+        // kick costs nothing (zero bytes buffered) and revives dead VPN
+        // connections. Counted from the last attempt so kicks never cut into
+        // the hard-error retry ladder.
+        job.kicks++;
+        job.lastAttemptTick = ticks;
+        job.errored = false;
+        job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=kick${job.kicks}`;
+    };
+
     const watchdog = setInterval(() => {
         ticks++;
         // Feed replaced / panel torn down: stop everything — detached nodes
         // would keep issuing network requests. The in-flight transfers die
         // with the page or land in the browser cache for the next render.
-        const detached = [...active, ...queue].filter(j => j.node.isConnected === false);
+        const detached = [...active, ...queue, ...longTail].filter(j => j.node.isConnected === false);
         for (const job of detached) finishJob(job, false);
-        if (!active.length && !queue.length) { clearInterval(watchdog); return; }
+        if (!active.length && !queue.length && !longTail.length) { clearInterval(watchdog); return; }
         for (const job of active) {
             if (imgSettled(job.img)) { finishJob(job, true); continue; }
             const age = ticks - job.startedTick;
-            if (age >= STOP_TICKS) { finishJob(job, false); degradeJob(job); continue; }
+            if (age >= STOP_TICKS) {
+                // Fine-grained bookkeeping ends here, but the box is NOT
+                // abandoned: it moves to the slow-service tail, where its
+                // zero-byte request keeps getting kicked and its late load
+                // still revives the caption. This is what keeps the stored
+                // browser cache filling and makes every later render instant.
+                active = active.filter(j => j !== job);
+                degradeJob(job);
+                longTail.push(job);
+                continue;
+            }
             if (age >= DEGRADE_TICKS) degradeJob(job);
             // Retry ladder on a hard error (cache-busted: the same URL can
             // reuse the poisoned connection). A silent transfer is NEVER
@@ -269,21 +297,26 @@ function runMediaLoadQueue(jobs) {
                     job.errored = false;
                     job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=${job.attempts}`;
                 }
-            } else if (job.kicks < MAX_ZERO_BYTE_KICKS && !job.done
-                && job.img.naturalWidth === 0 && !job.img.complete
-                && ticks - job.lastAttemptTick >= ZERO_BYTE_KICK_AFTER_TICKS) {
-                // Nothing received yet: the socket is dead or the request is
-                // still hanging on a memegen render. A cache-busted kick costs
-                // nothing (zero bytes buffered) and revives dead connections.
-                // Counted from the last attempt so kicks never cut into the
-                // hard-error retry ladder.
-                job.kicks++;
-                job.lastAttemptTick = ticks;
-                job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=kick${job.kicks}`;
+            } else if (dueForKick(job)) {
+                doKick(job);
             }
         }
+        // Slow-service tail: the STOP branch moved degraded jobs here. Each
+        // still-mounted request gets its own ~45s patience windows (up to
+        // MAX_ZERO_BYTE_KICKS kicks); ~1m after the last one bookkeeping
+        // closes — but the img keeps draining and a landing load still
+        // revives the caption even past that.
+        for (const job of longTail) {
+            if (imgSettled(job.img)) { finishJob(job, true); continue; }
+            if (job.kicks >= MAX_ZERO_BYTE_KICKS
+                && ticks - job.lastAttemptTick >= KICK_TAIL_TICKS) {
+                finishJob(job, false);
+                continue;
+            }
+            if (dueForKick(job)) doKick(job);
+        }
         pump();
-        if (!active.length && !queue.length) clearInterval(watchdog);
+        if (!active.length && !queue.length && !longTail.length) clearInterval(watchdog);
     }, WATCHDOG_TICK_MS);
     // Small TTFB-bound files (memegen cold renders, stickers) start at once —
     // the sooner the request lands, the sooner the server render begins; only
