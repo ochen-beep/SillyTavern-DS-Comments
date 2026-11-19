@@ -121,11 +121,19 @@ export function upgradeMediaPlaceholders(root) {
             img.addEventListener('error', () => { errored = true; trace(`media failed to load: ${rawUrl}`); });
             // Reading-window timings: the reader stays ~1 minute after a feed
             // renders, so all USEFUL retry work is front-loaded there
-            // (error-driven backoff ~2/6/15/30s), the box degrades to its
+            // (error-driven backoff ~5/10/15/20s), the box degrades to its
             // caption at ~35s — while the reader is still looking and the
-            // bracket reads as intentional — and everything stops at ~2 min
-            // (nobody is watching; the stored feed HTML keeps the
-            // placeholder, so the next render retries fresh).
+            // bracket reads as intentional — and everything stops at ~2 min.
+            // CRITICAL: a SILENT stall (no load, no error — a slowly draining
+            // body) must never be re-triggered by re-assigning src: that
+            // aborts the in-flight download and resets it to zero. The live
+            // failure was 1.5MB gifs at ~20KB/s (~75s to finish) killed at
+            // every retry tick, then quietly finishing into the browser cache
+            // AFTER the watchdog stopped — the next reload served them
+            // instantly. The download keeps running detached from the DOM;
+            // its load event swaps the picture back in place of the caption.
+            // A silent transfer that produced NOTHING for 60s gets exactly
+            // one cache-busted restart (a dead socket can stay mute forever).
             node.classList?.add?.('dsc_gif_loading');
             let lastAttemptTick = 0;
             let ticks = 0;
@@ -146,10 +154,11 @@ export function upgradeMediaPlaceholders(root) {
             // tick counters keep the schedule deterministic for the test stubs.
             const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
             const STOP_TICKS = 24;      // ~2 min: nobody is watching past this
-            // Backoff ladder after a hard error, in ticks (2s → 1, 6s → 2,
-            // 15s → 3, 30s → 6 — errors fire fast, so retries front-load the
+            const RESURRECT_TICK = 12;  // ~60s: one restart for a forever-silent transfer
+            // Backoff ladder after a hard error, in ticks (5s → 2, 10s → 4,
+            // 15s → 5, 20s → 6 — errors fire fast, so retries front-load the
             // reading window).
-            const RETRY_LADDER_TICKS = [1, 2, 3, 6];
+            const RETRY_LADDER_TICKS = [2, 4, 5, 6];
             const watchdog = setInterval(() => {
                 // The feed was replaced (innerHTML swap) or the panel torn
                 // down: stop polling and let the nodes go — a detached img
@@ -182,23 +191,30 @@ export function upgradeMediaPlaceholders(root) {
                     // is born — it must be visible in the diagnostic dump.
                     recordEvent('log', `event=media_stall type=${type} degraded=true ticks=${ticks}`);
                 }
-                // Retry when due: a hard error fires fast, so its ladder lands
-                // inside the reading window; a stalled stream fires nothing,
-                // so poll every tick while the reader is here and every 3rd
-                // tick after the degrade.
-                const sinceAttempt = ticks - lastAttemptTick;
-                const dueTicks = errored
-                    ? (attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[attempts] : Infinity)
-                    : (degraded ? 3 : 1);
-                if (sinceAttempt >= dueTicks) {
+                // Retry ONLY on a hard error (the transfer aborted — repeating
+                // the same stream is pointless, cache-bust it) via the ladder.
+                // A silent stall keeps its in-flight download: restarting it
+                // would throw away everything already buffered.
+                if (errored) {
+                    const dueTicks = attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[attempts] : Infinity;
+                    if (ticks - lastAttemptTick >= dueTicks) {
+                        attempts++;
+                        lastAttemptTick = ticks;
+                        errored = false;
+                        // Cache-bust: an identical URL can reuse the same
+                        // poisoned connection/partial cache entry.
+                        img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=${attempts}`;
+                    }
+                    return;
+                }
+                // Silent stall: exactly one mid-window restart at ~60s, only
+                // if NOTHING has happened since t=0 (no load, no error — a
+                // socket that will never speak). Already-restarted transfers
+                // never get another one.
+                if (attempts === 0 && lastAttemptTick === 0 && ticks >= RESURRECT_TICK) {
                     attempts++;
                     lastAttemptTick = ticks;
-                    errored = false;
-                    // Cache-bust the retry: re-assigning the same URL can
-                    // reuse a stalled connection/partial cache entry
-                    // (observed live with memegen on a throttled link — every
-                    // identical retry died at the same byte offset).
-                    img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=${attempts}`;
+                    img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=resurrect`;
                 }
             }, WATCHDOG_TICK_MS);
             node.textContent = '';
