@@ -38,12 +38,6 @@ test('defaultSettings is frozen and has expected shape', () => {
     assert.ok(defaultSettings.windowGeom && typeof defaultSettings.windowGeom.width === 'number');
 });
 
-test('defaultSettings excludes removed local token budget settings', () => {
-    assert.equal('customMaxContext' in defaultSettings, false);
-    assert.equal('customMaxTokens' in defaultSettings, false);
-    assert.equal('customMaxContext' in NUMERIC_SETTINGS, false);
-    assert.equal('customMaxTokens' in NUMERIC_SETTINGS, false);
-});
 test('hashHue: deterministic, in range [0,360), stable across calls', () => {
     const a = hashHue('neon_dreamer42');
     const b = hashHue('neon_dreamer42');
@@ -223,6 +217,11 @@ test('loadSettings removes legacy token settings without discarding unknown sett
     assert.equal('customMaxTokens' in globalThis._stCtx.extensionSettings[MODULE_NAME], false);
     assert.deepEqual(globalThis._stCtx.extensionSettings[MODULE_NAME].futureSetting, { retained: true });
     assert.equal(saves, 1);
+    // removed settings must not sneak back into defaults or NUMERIC_SETTINGS
+    assert.equal('customMaxContext' in defaultSettings, false);
+    assert.equal('customMaxTokens' in defaultSettings, false);
+    assert.equal('customMaxContext' in NUMERIC_SETTINGS, false);
+    assert.equal('customMaxTokens' in NUMERIC_SETTINGS, false);
 });
 test('loadSettings: soundFiles / soundId defaulted when missing or falsy', async () => {
     globalThis._stCtx.extensionSettings[MODULE_NAME] = { soundId: '' };

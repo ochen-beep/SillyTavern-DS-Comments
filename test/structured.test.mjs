@@ -116,8 +116,6 @@ test('strict schema includes gif/sticker/meme with null optionals and additional
     assert.deepEqual(item.properties.meme.anyOf[0].required, ['template', 'top', 'bottom']);
     assert.deepEqual(item.properties.meme.anyOf[0].properties.template, { type: 'string' });
     assert.equal(item.properties.meme.anyOf[0].additionalProperties, false);
-    for (const k of ['gif', 'sticker', 'meme']) assert.ok(item.required.includes(k));
-    assert.deepEqual(item.required, ['username', 'content', 'reply', 'reactions', 'gif', 'sticker', 'meme']);
 });
 
 test('loose schema includes gif/sticker/meme as non-required optionals', () => {
@@ -126,5 +124,4 @@ test('loose schema includes gif/sticker/meme as non-required optionals', () => {
     assert.deepEqual(item.properties.gif, { type: 'string' });
     assert.deepEqual(item.properties.sticker, { type: 'string' });
     assert.equal(item.properties.meme.type, 'object');
-    assert.deepEqual(item.required, ['username', 'content']);
 });

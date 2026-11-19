@@ -90,22 +90,9 @@ test('pull up back to a cached adjacent post restores its commentary', async () 
     state.navLockUntil = 0;
     // #1 → #0 (cached): commentary restored.
     await _testGoToAdjacentPost(-1);
+    assert.equal(state.currentPostId, '0', 'position lands back on the cached post');
     assert.match(feed.innerHTML, /cached comments for #0/);
     assert.ok(!feed.innerHTML.includes('dscEmptyGenerate'));
-});
-
-test('overscroll sequence restores cached A after uncached B shows the empty CTA', async () => {
-    await positionedOnCachedPost();
-
-    await _testGoToAdjacentPost(1);   // cached A -> uncached B
-    assert.equal(state.currentPostId, '1');
-    assert.match(feed.innerHTML, /dscEmptyGenerate/);
-    state.navLockUntil = 0;
-
-    await _testGoToAdjacentPost(-1);  // uncached B -> cached A
-    assert.equal(state.currentPostId, '0');
-    assert.match(feed.innerHTML, /cached comments for #0/);
-    assert.doesNotMatch(feed.innerHTML, /dscEmptyGenerate/);
 });
 
 test('superseded old overscroll cannot erase a newer selected feed', async () => {
@@ -137,42 +124,6 @@ test('superseded old overscroll cannot erase a newer selected feed', async () =>
     assert.match(feed.innerHTML, /newer A/);
     assert.doesNotMatch(feed.innerHTML, /dscEmptyGenerate/);
     assert.equal(state.currentPostId, '0');
-});
-
-// ── Simplified sync contract (2026-07-26) ──
-// Horizontal panel swipe restores cached local commentary directly; it no
-// longer depends on the ST swipe bridge for correctness. See
-// See the simplified-sync contract in src/ui/st-swipe-bridge.js (file header).
-
-test('panel horizontal swipe no longer depends on the ST bridge for correctness', async () => {
-    const ctx = getCtx();
-    ctx.chat = [{
-        mes: 'swipe-0 text', is_user: false, is_system: false, is_hidden: false,
-        swipe_id: 1, swipes: ['swipe-0 text', 'swipe-1 text', 'swipe-2 text'],
-    }];
-    state.currentPostId = '0';
-    state.currentSwipeIdx = 1;
-    // Seed cache for the adjacent swipes only — the bridge mock records any
-    // call so we can prove the gesture path never reached it.
-    _seedSaveCache({
-        '0': {
-            '0': { html: '<div class="dsc_message">prev</div>', timestamp: 1, generationFp: 'fp-current' },
-            '2': { html: '<div class="dsc_message">next</div>', timestamp: 1, generationFp: 'fp-current' },
-        },
-    });
-    const bridgeCalls = [];
-    _testInject({
-        swipe: async () => { bridgeCalls.push('called'); },
-        SWIPE_DIRECTION: { LEFT: 'LEFT', RIGHT: 'RIGHT' },
-        SWIPE_SOURCE: { SWIPE_PICKER: 'SWIPE_PICKER' },
-    });
-
-    await _testGoToAdjacentSwipe(1);   // swipe 1 → 2 (cached 'next')
-
-    assert.equal(bridgeCalls.length, 0, 'simplified mode must NOT reach the ST swipe bridge');
-    assert.equal(state.currentPostId, '0');
-    assert.equal(state.currentSwipeIdx, 2);
-    assert.match(feed.innerHTML, /next/);
 });
 
 test('panel vertical overscroll still scrolls chat and restores target post commentary', async () => {

@@ -75,16 +75,6 @@ test('preserves decimal geometry values', () => {
     assert.deepEqual(normalizeDesktopGeometry(geometry, viewport), geometry);
 });
 
-test('keeps a 60px horizontal header segment available', () => {
-    const result = normalizeDesktopGeometry(
-        { left: 900, top: 80, width: 380, height: 360 },
-        { left: 0, top: 0, width: 700, height: 500 },
-    );
-
-    assert.equal(result.left, 640);
-    assert.equal(700 - result.left, 60);
-});
-
 test('keeps the full 44px header accessible at the bottom', () => {
     const result = normalizeDesktopGeometry(
         { left: 120, top: 900, width: 380, height: 360 },

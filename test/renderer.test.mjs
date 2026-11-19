@@ -250,6 +250,13 @@ test('upgradeMediaPlaceholders: upgrades placeholder to img with allowlisted URL
     assert.ok(placeholder._classes.has('dsc_gif_loading'));
 });
 
+test('upgradeMediaPlaceholders: src URL is carried verbatim, query string preserved', () => {
+    const placeholder = makePlaceholder({ 'data-dsc-media-src': 'https://media.giphy.com/media/x.gif?a=b' });
+    const feed = { querySelectorAll: () => [placeholder] };
+    assert.equal(upgradeMediaPlaceholders(feed), 1);
+    assert.equal(placeholder.child.src, 'https://media.giphy.com/media/x.gif?a=b');
+});
+
 test('upgradeMediaPlaceholders: load clears the loading marker', () => {
     const placeholder = makePlaceholder({
         'data-dsc-media-src': 'https://media.giphy.com/a.gif',
@@ -549,15 +556,6 @@ test('resolved media renders placeholder, not fallback', () => {
     const html = renderMessages([msg({ content: '', media: { type: 'gif', url: 'https://media.giphy.com/a.gif' } })]);
     assert.match(html, /data-dsc-media-src/);
     assert.ok(!html.includes('dsc_media_fallback'));
-});
-
-// ── media <img> upgrade ──
-
-test('upgradeMediaPlaceholders swaps the placeholder for an <img> with the same URL', () => {
-    const placeholder = makePlaceholder({ 'data-dsc-media-src': 'https://media.giphy.com/media/x.gif?a=b' });
-    const feed = { querySelectorAll: () => [placeholder] };
-    assert.equal(upgradeMediaPlaceholders(feed), 1);
-    assert.equal(placeholder.child.src, 'https://media.giphy.com/media/x.gif?a=b');
 });
 
 // ── reaction emote chips (code → manifest → img) ──
