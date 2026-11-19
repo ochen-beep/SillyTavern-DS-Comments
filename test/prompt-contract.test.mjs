@@ -16,38 +16,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROMPT_CONTRACT, buildContract } from '../src/prompt-contract.js';
 
-test('PROMPT_CONTRACT is a non-empty string', () => {
+test('PROMPT_CONTRACT keeps the invariants the parser and buildPrompt rely on', () => {
     assert.equal(typeof PROMPT_CONTRACT, 'string');
     assert.ok(PROMPT_CONTRACT.length > 100, `expected sizable contract, got ${PROMPT_CONTRACT.length}`);
-});
-
-test('contract references {{count}} (count-substitution contract with buildPrompt)', () => {
+    // count-substitution contract with buildPrompt
     assert.match(PROMPT_CONTRACT, /\{\{count\}\}/);
-});
-
-test('contract mandates JSON array output (parser-format contract)', () => {
+    // parser-format contract: JSON array output with the schema keys
     assert.match(PROMPT_CONTRACT, /JSON array/i);
-});
-
-test('contract documents required schema keys username and content', () => {
     assert.match(PROMPT_CONTRACT, /"username"/);
     assert.match(PROMPT_CONTRACT, /"content"/);
     assert.match(PROMPT_CONTRACT, /"reactions"/);
     assert.match(PROMPT_CONTRACT, /"reply"/);
-});
-
-test('contract contains FORMAT RULES section', () => {
+    // format rules section + an embedded JSON example block (contract.test.mjs parses it)
     assert.match(PROMPT_CONTRACT, /FORMAT RULES/i);
-});
-
-test('contract: an embedded JSON example block is present (parseable as array per contract.test)', () => {
-    // The contract contains an example array in [ ... ]; contract.test.mjs
-// parses exactly that.
     assert.match(PROMPT_CONTRACT, /\[\s*\{[\s\S]*\}\s*\]/);
-});
-
-test('contract example uses realistic count formats ("2.4K" etc.) — guard against edits that drop them', () => {
-    assert.ok(PROMPT_CONTRACT.includes('2.4K') || PROMPT_CONTRACT.includes('count'));
 });
 
 test('contract example block must not contain placeholder message content — models echo examples verbatim', () => {

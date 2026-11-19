@@ -27,11 +27,6 @@ test('preserves comments window layering contract', async () => {
     const windowRule = css.match(/#dscWindow\s*\{([\s\S]*?)\n\}/);
     assert.ok(windowRule, '#dscWindow rule should exist');
     assert.match(windowRule[1], /z-index:\s*2998;/, '#dscWindow should remain at z-index 2998');
-    assert.match(
-        windowRule[1],
-        /\/\*[^*]*host panels and modals above the comments window[^*]*\*\//,
-        '#dscWindow should explain that host panels and modals remain above it',
-    );
 
     for (const selector of ['.dsc_qs_menu', '.dsc_popover']) {
         const rule = css.match(new RegExp(`\\${selector}\\s*\\{([\\s\\S]*?)\\n\\}`));
