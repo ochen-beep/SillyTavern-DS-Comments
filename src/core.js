@@ -349,12 +349,18 @@ const _sanitizeMax = 64;
 // style attributes stay allowed ONLY for the --dsc-nick-* custom properties
 // the renderer emits; everything else in a style attribute is a CSS-exfil/
 // defacement vector (background:url() fetches on render — verified live).
-// Registered once as a DOMPurify HOOK: config keys like
-// BEFORE_SANITIZE_ATTRIBUTES are not a thing — addHook is the only API.
-let _styleHookRegistered = false;
-function _registerStyleAllowHook(DOMPurify) {
-    if (_styleHookRegistered || typeof DOMPurify.addHook !== 'function') return;
-    DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
+// Registered once as a DOMPurify HOOK on an ISOLATED instance: DOMPurify is a
+// factory (DOMPurify(window) → fresh instance), and hooks are global PER
+// INSTANCE — a hook on the shared ST instance would run for EVERY sanitize
+// app-wide (chat messages included) and strip the style attributes the
+// message-coloring regexes rely on (the live "regex breaks after any swipe"
+// report).
+let _purify = null;
+function _getIsolatedPurify(DOMPurify) {
+    if (_purify) return _purify;
+    _purify = typeof DOMPurify === 'function' ? DOMPurify(window) : DOMPurify;
+    if (typeof _purify.addHook !== 'function') return _purify;
+    _purify.addHook('beforeSanitizeAttributes', (node) => {
         try {
             const style = node?.getAttribute?.('style');
             if (typeof style !== 'string' || !style) return;
@@ -363,7 +369,12 @@ function _registerStyleAllowHook(DOMPurify) {
             else node.removeAttribute('style');
         } catch { /* hook runs per-node; a failure must not abort sanitization */ }
     });
-    _styleHookRegistered = true;
+    return _purify;
+}
+
+/** Test hook: drop the isolated DOMPurify instance (fresh factory on next sanitize). */
+export function _resetPurifyForTest() {
+    _purify = null;
 }
 export function sanitize(html) {
     try {
@@ -373,9 +384,8 @@ export function sanitize(html) {
             _sanitizeCache.set(html, v);
             return v;
         }
-        const DOMPurify = SillyTavern.libs.DOMPurify;
-        _registerStyleAllowHook(DOMPurify);
-        const clean = DOMPurify.sanitize(html, {
+        const purify = _getIsolatedPurify(SillyTavern.libs.DOMPurify);
+        const clean = purify.sanitize(html, {
         // Forbid media/link tags so a prompt-injected model can't emit tracking
         // pixels (<img>), phishing links (<a>), or media embeds into the panel.
         // DOMPurify already strips scripts/event-handlers by default; this

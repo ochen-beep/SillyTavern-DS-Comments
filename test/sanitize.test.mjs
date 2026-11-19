@@ -14,7 +14,7 @@
 import '../test-helpers/stub-runtime.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitize, escapeHtml } from '../src/core.js';
+import { sanitize, escapeHtml, _resetPurifyForTest } from '../src/core.js';
 
 // ── (a) FORBID_TAGS reaches DOMPurify with the expected list ──
 
@@ -90,4 +90,47 @@ test('sanitize keeps media placeholder div with data-* attributes (img still for
 
 test('sanitize still strips model-emitted <img> tags', () => {
     assert.ok(!/<img/i.test(sanitize('<img src="https://evil.example.com/pixel.gif">')));
+});
+
+// ── hook isolation: the style hook must live on an ISOLATED DOMPurify ──
+// Regression: the hook used to be registered on the shared SillyTavern.libs
+// instance, whose hooks run for EVERY sanitize app-wide — chat message
+// renders included — stripping the style attributes that message-coloring
+// regexes emit (the live "regex breaks after any swipe" report).
+
+test('sanitize: style hook goes to an isolated DOMPurify instance, not the shared one', async () => {
+    const libs = globalThis.SillyTavern.libs;
+    let sharedHooks = 0;
+    const sharedSanitizeCalls = [];
+    const shared = {
+        sanitize(html, cfg) { sharedSanitizeCalls.push(html); return html; },
+        addHook() { sharedHooks++; },
+    };
+    const factoryWins = [];
+    const isolatedHooks = [];
+    const isolated = {
+        sanitize(html, cfg) {
+            for (const h of isolatedHooks) h({ getAttribute: null, removeAttribute: null });
+            return html;
+        },
+        addHook(type, fn) { isolatedHooks.push(fn); },
+    };
+    const factory = (win) => { factoryWins.push(win); return isolated; };
+
+    libs.DOMPurify = factory;
+    _resetPurifyForTest();
+    try {
+        sanitize('<div>isolation-probe</div>');
+        assert.equal(factoryWins.length, 1, 'DOMPurify called as a factory exactly once');
+        assert.equal(factoryWins[0], globalThis.window, 'factory received window');
+        assert.equal(sharedHooks, 0, 'NO hook on the shared instance');
+        assert.equal(isolatedHooks.length, 1, 'style hook registered on the isolated instance');
+        assert.equal(sharedSanitizeCalls.length, 0, 'sanitize does not run on the shared instance');
+        // second call reuses the isolated instance (no repeated factory calls)
+        sanitize('<div>isolation-probe-2</div>');
+        assert.equal(factoryWins.length, 1, 'isolated instance is cached');
+    } finally {
+        libs.DOMPurify = shared;
+        _resetPurifyForTest();
+    }
 });
