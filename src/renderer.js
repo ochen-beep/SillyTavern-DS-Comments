@@ -116,18 +116,19 @@ export function upgradeMediaPlaceholders(root) {
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
             img.src = rawUrl;
-            img.addEventListener('error', () => trace(`media failed to load: ${rawUrl}`));
-            // memegen renders every NEW caption combo server-side — sometimes
-            // for minutes — and a stalled transfer reserves an empty box
-            // forever. The loading class keeps the box honest while waiting;
-            // the watchdog re-requests the same stateless URL (a finished
-            // render is cached and returns instantly). After three stalls the
-            // box degrades to the caption text — the joke survives even when
-            // the render never lands — but the watchdog keeps polling a
-            // bounded number of extra ticks: a late render swaps the image
-            // back in place of the caption. The stored feed HTML keeps the
-            // placeholder, so a later re-render retries fresh.
+            let errored = false;
+            img.addEventListener('error', () => { errored = true; trace(`media failed to load: ${rawUrl}`); });
+            // Reading-window timings: the reader stays ~1 minute after a feed
+            // renders, so all USEFUL retry work is front-loaded there
+            // (error-driven backoff ~2/6/15/30s), the box degrades to its
+            // caption at ~35s — while the reader is still looking and the
+            // bracket reads as intentional — and everything stops at ~2 min
+            // (nobody is watching; the stored feed HTML keeps the
+            // placeholder, so the next render retries fresh).
             node.classList?.add?.('dsc_gif_loading');
+            let lastAttemptTick = 0;
+            let ticks = 0;
+            let attempts = 0;
             let degraded = false;
             const restoreImage = () => {
                 degraded = false;
@@ -139,7 +140,15 @@ export function upgradeMediaPlaceholders(root) {
                 node.classList?.remove?.('dsc_gif_loading');
                 if (degraded) restoreImage();
             });
-            let stalls = 0;
+            const WATCHDOG_TICK_MS = 5000;
+            // All windows in ticks (1 tick = 5s): reading-window timings, and
+            // tick counters keep the schedule deterministic for the test stubs.
+            const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
+            const STOP_TICKS = 24;      // ~2 min: nobody is watching past this
+            // Backoff ladder after a hard error, in ticks (2s → 1, 6s → 2,
+            // 15s → 3, 30s → 6 — errors fire fast, so retries front-load the
+            // reading window).
+            const RETRY_LADDER_TICKS = [1, 2, 3, 6];
             const watchdog = setInterval(() => {
                 // The feed was replaced (innerHTML swap) or the panel torn
                 // down: stop polling and let the nodes go — a detached img
@@ -154,15 +163,12 @@ export function upgradeMediaPlaceholders(root) {
                     if (degraded) restoreImage();
                     return;
                 }
-                stalls++;
-                // ponytail: bounded revival window — 3 extra ticks (~90s) past
-                // the degrade, then give up entirely; a longer tail needs a
-                // backoff schedule nobody has asked for.
-                if (stalls >= 6) {
+                ticks++;
+                if (ticks >= STOP_TICKS) {
                     clearInterval(watchdog);
                     return;
                 }
-                if (stalls === 3) {
+                if (!degraded && ticks >= DEGRADE_TICKS) {
                     degraded = true;
                     node.classList?.remove?.('dsc_gif_loading');
                     node.classList?.add?.('dsc_gif_stalled');
@@ -172,12 +178,25 @@ export function upgradeMediaPlaceholders(root) {
                     node.textContent = '';
                     node.appendChild?.(caption);
                 }
-                // Cache-bust the retry: re-assigning the same URL can reuse a
-                // stalled connection/partial cache entry (observed live with
-                // memegen on a throttled link — every identical retry died at
-                // the same byte offset). A unique query forces a fresh stream.
-                img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=${stalls}`;
-            }, 30000);
+                // Retry when due: a hard error fires fast, so its ladder lands
+                // inside the reading window; a stalled stream fires nothing,
+                // so poll every tick while the reader is here and every 3rd
+                // tick after the degrade.
+                const sinceAttempt = ticks - lastAttemptTick;
+                const dueTicks = errored
+                    ? (attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[attempts] : Infinity)
+                    : (degraded ? 3 : 1);
+                if (sinceAttempt >= dueTicks) {
+                    attempts++;
+                    lastAttemptTick = ticks;
+                    errored = false;
+                    // Cache-bust the retry: re-assigning the same URL can
+                    // reuse a stalled connection/partial cache entry
+                    // (observed live with memegen on a throttled link — every
+                    // identical retry died at the same byte offset).
+                    img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=${attempts}`;
+                }
+            }, WATCHDOG_TICK_MS);
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);

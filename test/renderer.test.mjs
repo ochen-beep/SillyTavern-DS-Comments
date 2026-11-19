@@ -247,7 +247,7 @@ test('upgradeMediaPlaceholders: load clears the loading marker', () => {
     assert.ok(!placeholder._classes.has('dsc_gif_loading'));
 });
 
-test('upgradeMediaPlaceholders: watchdog re-requests, degrades after 3 stalls, revives on a late render', () => {
+test('upgradeMediaPlaceholders: retries front-load the reading window, degrades at ~35s, stops at ~2 min', () => {
     const placeholder = makePlaceholder({
         'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
         'data-dsc-media-type': 'meme',
@@ -256,34 +256,70 @@ test('upgradeMediaPlaceholders: watchdog re-requests, degrades after 3 stalls, r
     const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
     upgradeMediaPlaceholders(feed);
     const img = placeholder.child;
-    // stalls retry the URL with a cache-buster — an identical retry reuses the
-    // same stalled connection (observed live on memegen: every retry died at
-    // the same byte offset)
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
-    assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png?dscr=2');
+    // stall ticks are 5s: dense polling retries inside the reading window
+    for (let i = 1; i <= 6; i++) globalThis._dscTickIntervals();   // t=30s
+    assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png?dscr=6', 'a retry per 5s tick while the reader is here');
     assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
-    // third stall degrades to the caption — but the watchdog keeps polling
+    // t=35s: the box degrades to the caption while the reader is still looking
     globalThis._dscTickIntervals();
     assert.ok(placeholder._classes.has('dsc_gif_stalled'));
     assert.ok(!placeholder._classes.has('dsc_gif_loading'));
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
+    assert.ok(String(img.src).endsWith('dscr=6'), 'the degrade tick itself carries no retry (cadence switched)');
+    // post-degrade polling is sparse: every 3rd tick (15s)
+    globalThis._dscTickIntervals();   // t=40s: since=2 — not due
+    globalThis._dscTickIntervals();   // t=45s: since=3 — retry #7
+    assert.ok(String(img.src).endsWith('dscr=7'), 'sparse after the degrade');
+    globalThis._dscTickIntervals();   // t=50s, 55s, 60s → retry #8 at t=60s
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.ok(String(img.src).endsWith('dscr=8'));
     // a late render (load fires on the polled img) swaps the image back in
     img.complete = true;
     img.naturalWidth = 600;
     img._listeners.load?.();
     assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
     assert.equal(placeholder.child, img);
-    // watchdog is released only after the bounded revival window (6 ticks)
-    const beforeExpiry = placeholder.child;
+    // the watchdog stops at ~2 min (24 ticks); past them the box is inert
+    for (let i = 0; i < 17; i++) globalThis._dscTickIntervals();   // t=135s
+    const beforeStop = placeholder.child;
+    const srcBeforeStop = img.src;
     globalThis._dscTickIntervals();
     globalThis._dscTickIntervals();
-    assert.equal(placeholder.child, beforeExpiry, 'still polling — nothing to degrade, image intact');
+    assert.equal(placeholder.child, beforeStop, 'past the window the watchdog stops without touching the box');
+    assert.equal(img.src, srcBeforeStop, 'no further network attempts after the window');
+});
+
+test('upgradeMediaPlaceholders: a hard error retries on the ladder, then stops', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://media.giphy.com/a.gif',
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': 'cat',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    const img = placeholder.child;
+    // ladder in ticks: 1, 2, 3, 6 after each error → retries land inside the
+    // reading window (t=5s, 15s, 30s, 60s) and then stop
+    globalThis._dscTickIntervals();                 // t=5s: stall due → retry 1
+    assert.ok(String(img.src).endsWith('dscr=1'));
+    img._listeners.error?.();                       // hard error → ladder
+    globalThis._dscTickIntervals();                 // t=10s: due 2 — not yet
+    assert.ok(String(img.src).endsWith('dscr=1'), 'ladder waits');
+    globalThis._dscTickIntervals();                 // t=15s: retry 2
+    assert.ok(String(img.src).endsWith('dscr=2'));
+    img._listeners.error?.();
+    for (let i = 0; i < 2; i++) globalThis._dscTickIntervals();   // t=20,25s: wait
+    globalThis._dscTickIntervals();                 // t=30s: retry 3
+    assert.ok(String(img.src).endsWith('dscr=3'));
+    img._listeners.error?.();
+    for (let i = 0; i < 5; i++) globalThis._dscTickIntervals();   // t=35..55s: wait (degrade fires at t=35s)
+    globalThis._dscTickIntervals();                 // t=60s: retry 4
+    assert.ok(String(img.src).endsWith('dscr=4'));
+    img._listeners.error?.();                       // ladder exhausted
     globalThis._dscTickIntervals();
     globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
-    assert.equal(placeholder.child, img, 'past the revival window the watchdog stops without touching the box');
+    assert.ok(String(img.src).endsWith('dscr=4'), 'bounded ladder — no infinite error retry loop');
 });
 
 test('upgradeMediaPlaceholders: degraded box never revives if the render never lands', () => {
@@ -294,21 +330,16 @@ test('upgradeMediaPlaceholders: degraded box never revives if the render never l
     });
     const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
     upgradeMediaPlaceholders(feed);
-    // three stalls → caption
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
+    // seven 5s ticks → t=35s → caption
+    for (let i = 0; i < 7; i++) globalThis._dscTickIntervals();
     assert.ok(placeholder._classes.has('dsc_gif_stalled'));
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
-    // no load ever fires: through the revival window the caption stays
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
+    // sparse post-degrade polling: the caption stays while the stream hangs
+    for (let i = 0; i < 6; i++) globalThis._dscTickIntervals();   // t=65s
     assert.ok(placeholder._classes.has('dsc_gif_stalled'), 'caption survives a never-ending stall');
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
-    // watchdog expired: further ticks are inert
-    globalThis._dscTickIntervals();
-    globalThis._dscTickIntervals();
+    // watchdog expired at ~2 min: further ticks are inert
+    for (let i = 0; i < 14; i++) globalThis._dscTickIntervals();  // t=135s
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
 });
 
