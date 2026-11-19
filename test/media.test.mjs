@@ -274,6 +274,38 @@ test('resolveCommentMedia: picks a random candidate, not the fixed first result'
     for (const url of seen) assert.match(url, /media\.giphy\.com\/[123]\.gif/);
 });
 
+test('resolveCommentMedia: lightest giphy variant wins, mp4 skipped', async () => {
+    // fixed_height_small (small gif) beats downsized (1-2MB);
+    // downsized_small is an mp4 — <img> can't play it, skipped
+    fetchHandler = () => ({
+        ok: true,
+        json: async () => ({ data: [
+            { images: {
+                downsized: { url: 'https://media.giphy.com/heavy.gif' },
+                downsized_small: { url: 'https://media.giphy.com/clip.mp4' },
+                fixed_height_small: { url: 'https://media.giphy.com/light.gif' },
+            } },
+        ] }),
+    });
+    const msgs = [{ username: 'a', content: 'x', gif: 'cat' }];
+    const n = await resolveCommentMedia(msgs, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
+    assert.equal(n, 1);
+    assert.equal(msgs[0].media.url, 'https://media.giphy.com/light.gif', 'small gif variant preferred over heavy/mp4');
+    // all-small variants: mp4 skipped, next candidate wins
+    fetchHandler = () => ({
+        ok: true,
+        json: async () => ({ data: [
+            { images: {
+                downsized_small: { url: 'https://media.giphy.com/clip.mp4' },
+                downsized: { url: 'https://media.giphy.com/heavy.gif' },
+            } },
+        ] }),
+    });
+    const msgs2 = [{ username: 'b', content: 'x', gif: 'cat' }];
+    await resolveCommentMedia(msgs2, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
+    assert.equal(msgs2[0].media.url, 'https://media.giphy.com/heavy.gif', 'falls past mp4 to downsized');
+});
+
 test('resolveCommentMedia: non-allowlisted provider URL is dropped', async () => {
     fetchHandler = () => ({
         ok: true,

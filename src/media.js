@@ -268,11 +268,29 @@ async function searchGiphy(query, { apiKey, rating, sticker, signal }) {
         // Collect every usable candidate and take one at random — relevance order
         // is deterministic, so always taking the first attaches the identical GIF
         // to every regeneration of the same query.
+        // Variant priority: lightest FIRST. The reader stays ~1 minute; a
+        // full-size downsized gif (1–2MB) misses that window on a slow link
+        // (measured live: every >24KB body stalled at ~20KB/s), while the
+        // small variants are 10x lighter and land before the degrade tick.
+        // `downsized_small` can be a .mp4 — the <img> can't play it, so a
+        // .gif URL is required for the chip to show anything.
+        const pickUrl = (images) => {
+            const candidates = [
+                images?.fixed_height_small?.url,
+                images?.downsized_small?.url,
+                images?.downsized?.url,
+                images?.fixed_height?.url,
+                images?.original?.url,
+            ];
+            for (const url of candidates) {
+                if (typeof url === 'string' && url && !url.endsWith('.mp4')) return url;
+            }
+            return null;
+        };
         const urls = [];
         for (const item of results) {
-            const images = item?.images;
-            const url = images?.downsized?.url ?? images?.fixed_height?.url ?? images?.original?.url;
-            if (typeof url === 'string' && url) urls.push(url);
+            const url = pickUrl(item?.images);
+            if (url) urls.push(url);
         }
         return urls;
     };
