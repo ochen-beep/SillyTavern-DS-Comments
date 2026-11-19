@@ -16,10 +16,12 @@ import assert from 'node:assert/strict';
 import { state } from '../src/core.js';
 import { renderMessages, upgradeMediaPlaceholders } from '../src/renderer.js';
 import { _setEmoteManifest } from '../src/emotes.js';
+import { dumpEventLog, _resetEventLog } from '../src/event-log.js';
 
 beforeEach(() => {
     state.settings = { reactionEmotes: true };
     _setEmoteManifest({ builtin: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } });
+    _resetEventLog();
 });
 
 const msg = (o) => ({ username: o.username ?? 'u', content: o.content ?? '', replyTo: o.replyTo ?? null, replyQuote: o.replyQuote ?? null, reactions: o.reactions ?? [], media: o.media, gif: o.gif, sticker: o.sticker, meme: o.meme });
@@ -345,6 +347,10 @@ test('upgradeMediaPlaceholders: a zero-byte silent stall gets two kicks, then le
     assert.ok(img.src.includes('dscr=kick2'), 'second zero-byte kick at ~90s');
     for (let tick = 19; tick <= 24; tick++) boot();
     assert.equal(String(img.src.match(/kick(\d)/)?.[1]), '2', 'kicks are bounded at two');
+    img.complete = true;
+    img.naturalWidth = 480;
+    img._listeners.load?.();
+    assert.match(dumpEventLog(), /event=media_revive type=meme ticks=\d+ kicks=2 pos=1\/1/, 'the revival lands in the diagnostic dump');
 });
 
 test('upgradeMediaPlaceholders: a draining transfer is never restarted through the whole window', () => {

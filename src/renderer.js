@@ -177,6 +177,10 @@ function runMediaLoadQueue(jobs) {
     const reviveOverCaption = (job) => {
         job.node.classList?.remove?.('dsc_gif_stalled');
         job.node.querySelector?.('.dsc_media_fallback')?.remove?.();
+        // The revival is the answer to every media_stall — it must be visible
+        // in the dump: how long after the stall the picture landed, and via
+        // which recovery path (kicks vs plain drain).
+        recordEvent('log', `event=media_revive type=${job.type} ticks=${ticks} kicks=${job.kicks} pos=${job.index + 1}/${total}`);
     };
 
     const finishJob = (job, landed) => {
