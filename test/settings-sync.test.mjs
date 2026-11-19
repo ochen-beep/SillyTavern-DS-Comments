@@ -62,10 +62,31 @@ test('settings template contains the static lore skeleton and no legacy picker r
     assert.equal(Object.hasOwn(FIELD_MAP, 'dsc_wi'), false);
     assert.doesNotMatch(html, /id=["']dsc_wi["']/);
     assert.doesNotMatch(html, /id=["']dsc_lorebook_context["']/);
-    assert.match(html, /id=["']dsc_lore_enable["']/);
-    assert.match(html, /id=["']dsc_lore_mode_auto["']/);
-    assert.match(html, /id=["']dsc_lore_mode_manual["']/);
+    // Full static lore skeleton — every element the lore UI mounts into.
+    for (const id of [
+        'dsc_lore_enable',
+        'dsc_lore_group',
+        'dsc_lore_mode',
+        'dsc_lore_mode_auto',
+        'dsc_lore_mode_manual',
+        'dsc_lore_scope_group',
+        'dsc_lore_scope_attached',
+        'dsc_lore_scope_hint',
+        'dsc_lore_manual_group',
+        'dsc_lore_book',
+        'dsc_lore_entries',
+    ]) {
+        assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
+    }
     assert.doesNotMatch(html, /id=["']dsc_lore_picker["']/);
+});
+
+test('settings template carries the FIELD_MAP wiring ids for stream and extra params', async () => {
+    const html = await readFile(new URL('../settings.html', import.meta.url), 'utf8');
+    // These two ids are FIELD_MAP-gated (settings-sync.js): if the template
+    // drops one, sync silently stops reading the control.
+    assert.match(html, /id=["']dsc_stream["']/);
+    assert.match(html, /id=["']dsc_extrabody["']/);
 });
 
 test('lorebook lifecycle mounts once and initializes from the current chat', async () => {

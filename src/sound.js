@@ -33,7 +33,7 @@ export const BUNDLED_SOUNDS = [
 ];
 
 // Uploadable audio extensions — mirrors the accept attribute of
-// #dsc_sound_file in settings.html (test/settings-html.test.mjs enforces sync).
+// #dsc_sound_file in settings.html (test/sound.test.mjs enforces sync).
 export const SOUND_EXTENSIONS = ['ogg', 'mp3', 'wav', 'm4a'];
 
 const MIME_TO_EXT = {
