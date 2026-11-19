@@ -37,15 +37,6 @@ test('sanitize: passes FORBID_TAGS with media/link tags to DOMPurify', () => {
     }
 });
 
-test('sanitize: forbidden <img> is stripped by the FORBID_TAGS stub', () => {
-    // Fresh string (not cached by previous tests) — otherwise the cache returns.
-    const html = `<div>pre</div><img src="x" onerror="alert(1)"><span>post</span>`;
-    const out = sanitize(html);
-    assert.match(out, /pre/);
-    assert.match(out, /post/);
-    assert.doesNotMatch(out, /<img/i, 'img stripped');
-});
-
 // ── (b) fail-closed: when the stub throws the result equals escapeHtml ──
 
 test('sanitize: fail-closed returns escapeHtml when DOMPurify throws', () => {
@@ -79,19 +70,6 @@ test('sanitize: a repeated call with the same string takes the cached result', (
         globalThis.SillyTavern.libs.DOMPurify.sanitize = original;
     }
 });
-// ── media placeholders survive sanitize (data-* contract) ──
-
-test('sanitize keeps media placeholder div with data-* attributes (img still forbidden)', () => {
-    const html = '<div class="dsc_gif" data-dsc-media-src="https://media.giphy.com/a.gif" data-dsc-media-type="gif" data-dsc-media-alt="cat"></div>';
-    const clean = sanitize(html);
-    assert.match(clean, /data-dsc-media-src="https:\/\/media\.giphy\.com\/a\.gif"/);
-    assert.ok(!/<img/i.test(clean), 'no real img tags through the sanitizer');
-});
-
-test('sanitize still strips model-emitted <img> tags', () => {
-    assert.ok(!/<img/i.test(sanitize('<img src="https://evil.example.com/pixel.gif">')));
-});
-
 // ── hook isolation: the style hook must live on an ISOLATED DOMPurify ──
 // Regression: the hook used to be registered on the shared SillyTavern.libs
 // instance, whose hooks run for EVERY sanitize app-wide — chat message

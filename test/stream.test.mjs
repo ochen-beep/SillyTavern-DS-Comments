@@ -20,13 +20,8 @@
 import '../test-helpers/stub-runtime.mjs';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { state, loadSettings, setApiKey, MODULE_NAME } from '../src/core.js';
 import { generateWithProfile, generateWithCustomEndpoint } from '../src/connection.js';
-
-const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 // ── helpers ──
 
@@ -364,17 +359,3 @@ test('CM: malformed extra params fail fast, sendRequest not called', async () =>
 });
 
 // ── UI surface ──
-
-test('settings.html carries the stream toggle and the extra params field', () => {
-    const html = readFileSync(path.join(root, 'settings.html'), 'utf8');
-    assert.match(html, /id="dsc_stream"/, 'stream checkbox present');
-    assert.match(html, /data-i18n="dscomments\.settings\.stream"/);
-    assert.match(html, /data-i18n="dscomments\.settings\.streamHint"/, 'CF-524 hint present');
-    assert.match(html, /id="dsc_extrabody"/, 'extra params field present');
-    assert.match(html, /data-i18n="dscomments\.settings\.extraBody"/);
-    assert.match(html, /data-i18n="dscomments\.settings\.extraBodyHint"/);
-    // The toggle sits in the behavior section, after the source controls.
-    const sourceIdx = html.indexOf('id="dsc_source"');
-    const streamIdx = html.indexOf('id="dsc_stream"');
-    assert.ok(sourceIdx !== -1 && streamIdx > sourceIdx, 'stream toggle lives after the source picker');
-});

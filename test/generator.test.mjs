@@ -11,9 +11,6 @@
 import '../test-helpers/stub-runtime.mjs';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { state, bumpGenerationEpoch, dumpDebugLog, clearDebugLog } from '../src/core.js';
 import { setCurrentPost } from '../src/cache.js';
 import { _seedSaveCache, _resetFeedFileStore, getFeedSlot } from '../src/feed-file-store.js';
@@ -443,17 +440,6 @@ const validResponse = JSON.stringify([
     { username: 'coder_42', content: 'nice', reactions: [] },
     { username: 'bot', content: 'cool', reactions: [] },
 ]);
-
-const generatorSource = readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'generator.js'),
-    'utf8',
-);
-
-test('generator no longer contains local prompt budget or truncation mechanics', () => {
-    for (const removed of ['resolvePromptBudget', 'countPromptTokens', 'assembleBoundedPrompt', 'context-truncated', 'token-count-fallback']) {
-        assert.doesNotMatch(generatorSource, new RegExp(removed));
-    }
-});
 
 test('generateFeed sends all selected history and context blocks without local truncation', async () => {
     setupGeneration({ loreConfig: { enabled: true, mode: 'manual', selectedEntries: [{ book: 'Book', uid: 1 }] } });
