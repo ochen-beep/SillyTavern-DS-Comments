@@ -6,4 +6,5 @@ desktop.ini
 
 # Internal dev docs, not part of the distributed extension
 PROJECT_MAP.md
+CHANGELOG.md
 docs/
