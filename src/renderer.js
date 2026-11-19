@@ -117,11 +117,10 @@ export function upgradeMediaPlaceholders(root) {
             img.setAttribute('decoding', 'async');
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
-            // src is NOT assigned here — the load queue starts this transfer
-            // when a slot frees up, so a slow link feeds pictures one/two at
-            // a time at full speed instead of starving all of them at once.
+            // src is NOT assigned here — the queue decides: memes/stickers
+            // start at once, heavy gifs wait for a slot (see runMediaLoadQueue).
             node.classList?.add?.('dsc_gif_loading');
-            jobs.push({ node, img, url: rawUrl, type, index: jobs.length, attempts: 0, errored: false, lastAttemptTick: 0, done: false });
+            jobs.push({ node, img, url: rawUrl, type, index: jobs.length, attempts: 0, kicks: 0, errored: false, lastAttemptTick: 0, done: false });
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);
@@ -137,42 +136,63 @@ export function upgradeMediaPlaceholders(root) {
 }
 
 // ── Media load queue ──
-// All pictures of one feed compete for the same link; on a slow channel N
-// parallel downloads starve each other (measured live: ~2KB/s per stream →
-// EVERY box missed the 35s degrade and fell back to text, while a queued
-// transfer finishes in 10–20s). Downloads run MAX_MEDIA_PARALLEL at a time,
-// DOM order first (top of the feed = reader's eyes), and the rest wait with
-// a spinner. Each transfer: no src restart on a silent stall (an in-flight
-// download drains into the browser cache even detached from the DOM — its
-// load event swaps the picture back over the caption); cache-busted retries
-// only on a hard error; one mid-window restart for a forever-silent socket.
+// All pictures of one feed compete for the same link, but they are NOT alike:
+// memes/stickers are 20–60KB files whose cost is the SERVER-SIDE memegen
+// render (cold combos render for minutes). Every such request must launch
+// immediately so the renders run in parallel — queuing them delays the
+// renders themselves. Gifs are multi-megabyte downloads: on a slow channel N
+// parallel ones starve each other (measured live: ~2KB/s per stream → every
+// box missed its window), so gifs alone pass through a small queue.
+// Each transfer: cache-busted retries on a hard error; a transfer with ZERO
+// bytes received (dead socket or still-hanging TTFB) is kicked cache-busted
+// twice (~45s, ~90s) — a kick cannot lose buffered data and unsticks dead
+// VPN connections; a transfer that already carries image data
+// (naturalWidth > 0) is never restarted. A degraded box keeps its img
+// mounted (CSS hides it) and its late load swaps the picture over the
+// caption, even after the watchdog stops.
 const MAX_MEDIA_PARALLEL = 2;
 const WATCHDOG_TICK_MS = 5000;
 // All windows in ticks (1 tick = 5s), per job, counted from its OWN start.
 const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
-const STOP_TICKS = 24;      // ~2 min: nobody is watching past this
-const RESURRECT_TICK = 10;  // ~50s: one restart for a forever-silent transfer
+const STOP_TICKS = 24;      // ~2 min: bookkeeping stops; a late load still revives the caption
+// Zero-byte kicks: <img> has no progress events, but naturalWidth > 0 as soon
+// as the first bytes arrive — a transfer with naturalWidth === 0 has received
+// literally nothing and is safe to restart. Kick interval counts from the
+// last attempt (initial request or previous kick), at most two kicks.
+const ZERO_BYTE_KICK_AFTER_TICKS = 9;   // ~45s with zero bytes → kick
+const MAX_ZERO_BYTE_KICKS = 2;
 // Backoff ladder after a hard error, in ticks.
 const RETRY_LADDER_TICKS = [2, 4, 5, 6];
 
 function runMediaLoadQueue(jobs) {
     const total = jobs.length;
     let ticks = 0;
-    let queue = [...jobs];
+    let queue = jobs.filter(j => j.type === 'gif');
     let active = [];
     let stopped = false;
 
+    // Swap the finished picture back in place of the caption. The img stays
+    // mounted through the stall, so only the caption is removed and the CSS
+    // class (which hides the img) is lifted.
+    const reviveOverCaption = (job) => {
+        job.node.classList?.remove?.('dsc_gif_stalled');
+        job.node.querySelector?.('.dsc_media_fallback')?.remove?.();
+    };
+
     const finishJob = (job, landed) => {
-        if (job.done) return;
+        if (job.done) {
+            // The transfer outlived the watchdog (a lazy image scrolled into
+            // view, a slow body still draining): the reader may be looking at
+            // this exact box, so its load event still revives the caption.
+            // Only the tick bookkeeping stays closed.
+            if (landed && job.degraded) reviveOverCaption(job);
+            return;
+        }
         job.done = true;
         active = active.filter(j => j !== job);
         if (landed) {
             job.node.classList?.remove?.('dsc_gif_loading');
-            if (job.degraded) {
-                job.node.classList?.remove?.('dsc_gif_stalled');
-                job.node.textContent = '';
-                job.node.appendChild?.(job.img);
-            }
+            if (job.degraded) reviveOverCaption(job);
         }
     };
 
@@ -184,7 +204,11 @@ function runMediaLoadQueue(jobs) {
         const caption = document.createElement('span');
         caption.className = 'dsc_media_fallback';
         caption.textContent = job.img.alt || '';
-        job.node.textContent = '';
+        // The img STAYS MOUNTED (CSS hides it while .dsc_gif_stalled is set).
+        // Removing it here would cancel a native lazy load that has not
+        // started yet (the box can sit below the fold) and strand the box on
+        // its caption until a full re-render — the live failure behind the
+        // "memes only appear after F5" reports.
         job.node.appendChild?.(caption);
         // Degradation is the moment a "no GIF in the feed" report is born —
         // it must be visible in the diagnostic dump; queue position shows
@@ -203,7 +227,11 @@ function runMediaLoadQueue(jobs) {
     };
 
     const pump = () => {
-        while (!stopped && active.length < MAX_MEDIA_PARALLEL && queue.length) {
+        // Slot accounting covers heavy gifs only; memes/stickers launched at
+        // queue construction are not gated.
+        while (!stopped
+            && active.filter(j => j.type === 'gif').length < MAX_MEDIA_PARALLEL
+            && queue.length) {
             startJob(queue.shift());
         }
     };
@@ -223,7 +251,12 @@ function runMediaLoadQueue(jobs) {
             if (age >= DEGRADE_TICKS) degradeJob(job);
             // Retry ladder on a hard error (cache-busted: the same URL can
             // reuse the poisoned connection). A silent transfer is NEVER
-            // restarted — it keeps draining.
+            // restarted: <img> has no progress events, so "silent" may just
+            // as well mean a slow drain — re-assigning src would abort the
+            // in-flight download and reset it to zero (the live failure:
+            // 1.5MB gifs at 20KB/s never finished while the reader watched,
+            // then drained into the cache AFTER the watchdog gave up —
+            // instantly served only on the next reload).
             if (job.errored && !job.done) {
                 const dueTicks = job.attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[job.attempts] : Infinity;
                 if (ticks - job.lastAttemptTick >= dueTicks) {
@@ -232,15 +265,28 @@ function runMediaLoadQueue(jobs) {
                     job.errored = false;
                     job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=${job.attempts}`;
                 }
-            } else if (job.attempts === 0 && job.lastAttemptTick === 0 && age >= RESURRECT_TICK) {
-                job.attempts++;
+            } else if (job.kicks < MAX_ZERO_BYTE_KICKS && !job.done
+                && job.img.naturalWidth === 0 && !job.img.complete
+                && ticks - job.lastAttemptTick >= ZERO_BYTE_KICK_AFTER_TICKS) {
+                // Nothing received yet: the socket is dead or the request is
+                // still hanging on a memegen render. A cache-busted kick costs
+                // nothing (zero bytes buffered) and revives dead connections.
+                // Counted from the last attempt so kicks never cut into the
+                // hard-error retry ladder.
+                job.kicks++;
                 job.lastAttemptTick = ticks;
-                job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=resurrect`;
+                job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=kick${job.kicks}`;
             }
         }
         pump();
         if (!active.length && !queue.length) clearInterval(watchdog);
     }, WATCHDOG_TICK_MS);
+    // Small TTFB-bound files (memegen cold renders, stickers) start at once —
+    // the sooner the request lands, the sooner the server render begins; only
+    // heavy gifs wait for a queue slot.
+    for (const job of jobs) {
+        if (job.type !== 'gif') startJob(job);
+    }
     pump();
 }
 

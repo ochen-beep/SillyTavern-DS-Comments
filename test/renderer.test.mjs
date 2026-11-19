@@ -205,17 +205,27 @@ test('message without media renders no placeholder (legacy shape intact)', () =>
 
 function makePlaceholder(attrs) {
     const classes = new Set();
+    const children = [];
     return {
         _attrs: { ...attrs },
         _classes: classes,
+        _children: children,
+        get children() { return children; },
+        isConnected: true,
         getAttribute(k) { return this._attrs[k] ?? null; },
         setAttribute(k, v) { this._attrs[k] = v; },
-        appendChild(c) { this.child = c; },
+        appendChild(c) { this.child = c; children.push(c); c.isConnected = this.isConnected; c.parentElement = this; },
+        querySelector(sel) { return children.find(c => String(c.className ?? '').includes(sel.replace('.', ''))) ?? null; },
         classList: {
             add(c) { classes.add(c); },
             remove(c) { classes.delete(c); },
         },
-        textContent: 'stale',
+        set textContent(v) {
+            this._textContent = v;
+            if (v === '') for (const c of children) c.isConnected = false;
+            children.length = 0;
+        },
+        get textContent() { return this._textContent ?? ''; },
     };
 }
 
@@ -256,28 +266,132 @@ test('upgradeMediaPlaceholders: a silent stall is never re-triggered — the tra
     const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
     upgradeMediaPlaceholders(feed);
     const img = placeholder.child;
+    const queueTimer = globalThis._dscIntervals.at(-1);
     // a silently draining body fires NO events: re-assigning src would abort
     // the in-flight download (the live failure: 1.5MB gifs killed mid-stream
     // at every retry tick, then finishing into the browser cache AFTER the
     // watchdog stopped — instantly served on the next reload)
     for (let i = 1; i <= 6; i++) globalThis._dscTickIntervals();
     assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png', 'no restarts on silent ticks');
-    // t=35s: the box degrades to the caption — the img keeps downloading detached
+    // t=35s: the box degrades to the caption while the img STAYS MOUNTED —
+    // removing it would cancel a native lazy load that has not started yet.
     globalThis._dscTickIntervals();
     assert.ok(placeholder._classes.has('dsc_gif_stalled'));
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
-    assert.equal(img.src, 'https://api.memegen.link/images/cmm/_.png', 'degrade must not abort the transfer');
-    // t=60s: exactly one cache-busted restart for a forever-silent socket
-    for (let i = 0; i < 5; i++) globalThis._dscTickIntervals();   // t=60s
-    assert.ok(String(img.src).endsWith('dscr=resurrect'), 'one mid-window restart');
-    for (let i = 0; i < 10; i++) globalThis._dscTickIntervals();  // t=110s
-    assert.equal(String(img.src.match(/dscr=(\w+)$/)?.[1]), 'resurrect', 'no second restart');
-    // a late render swaps the picture back in place of the caption
+    assert.equal(img.isConnected, true, 'degradation must not unmount the still-loading image');
+    assert.equal(placeholder._children.length, 2, 'caption rides next to the hidden img');
+    // t=40s: the queue keeps managing the mounted image.
+    queueTimer();
+    assert.equal(img.isConnected, true);
+    assert.equal(placeholder.child.textContent, 'cmm: sign text');
     img.complete = true;
     img.naturalWidth = 600;
     img._listeners.load?.();
     assert.ok(!placeholder._classes.has('dsc_gif_stalled'));
-    assert.equal(placeholder.child, img);
+    assert.ok(!placeholder._children.some(c => String(c.className).includes('dsc_media_fallback')), 'caption is removed on the late load');
+    assert.equal(img.isConnected, true, 'the revived image stays attached');
+});
+
+test('upgradeMediaPlaceholders: memes start at once; the queue serializes only heavy gifs', () => {
+    const meme = (alt) => makePlaceholder({
+        'data-dsc-media-src': `https://api.memegen.link/images/ds/${alt}.png?width=480`,
+        'data-dsc-media-type': 'meme',
+        'data-dsc-media-alt': alt,
+    });
+    const gif = (alt) => makePlaceholder({
+        'data-dsc-media-src': `https://media.giphy.com/media/${alt}/giphy.gif`,
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': alt,
+    });
+    const boxes = [meme('m1'), gif('g1'), meme('m2'), gif('g2'), meme('m3'), gif('g3')];
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? boxes : [] };
+    upgradeMediaPlaceholders(feed);
+    // Memes are TTFB-bound (server-side cold render): every request must be
+    // launched at once so the renders run in parallel. Only the heavy gifs
+    // pass through the 2-slot queue.
+    assert.equal(boxes[0].child.src.includes('m1'), true, 'meme 1 starts');
+    assert.equal(boxes[2].child.src.includes('m2'), true, 'meme 2 starts');
+    assert.equal(boxes[4].child.src.includes('m3'), true, 'meme 3 starts');
+    assert.equal(boxes[1].child.src.includes('g1'), true, 'gif slot 1 starts');
+    assert.equal(boxes[3].child.src.includes('g2'), true, 'gif slot 2 starts');
+    assert.equal(boxes[5].child.src, '', 'gif 3 waits for a slot');
+});
+
+test('upgradeMediaPlaceholders: a zero-byte silent stall gets two kicks, then left alone', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
+        'data-dsc-media-type': 'meme',
+        'data-dsc-media-alt': 'cmm: sign text',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    const img = placeholder.child;
+    const boot = () => {
+        globalThis._dscTickIntervals();
+        return String(img.src);
+    };
+    for (let tick = 1; tick <= 8; tick++) {
+        const src = boot();
+        assert.ok(!src.includes('dscr=kick'), `no kick before the 45s mark (tick ${tick})`);
+    }
+    // t=45s: zero bytes received (naturalWidth stays 0) — the socket is either
+    // dead or still waiting on the memegen render; kicking it cache-busted is
+    // free (nothing buffered yet) and unsticks dead VPN connections.
+    boot();
+    assert.ok(img.src.includes('dscr=kick1'), 'first zero-byte kick at ~45s');
+    for (let tick = 10; tick <= 17; tick++) boot();
+    assert.ok(!img.src.includes('kick2'), 'second kick waits for ~90s');
+    boot();
+    assert.ok(img.src.includes('dscr=kick2'), 'second zero-byte kick at ~90s');
+    for (let tick = 19; tick <= 24; tick++) boot();
+    assert.equal(String(img.src.match(/kick(\d)/)?.[1]), '2', 'kicks are bounded at two');
+});
+
+test('upgradeMediaPlaceholders: a draining transfer is never restarted through the whole window', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://media.giphy.com/slow-drain.gif',
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': 'slow drain',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    const img = placeholder.child;
+    const slot = globalThis._dscIntervals.length - 1;
+    // naturalWidth > 0 means image bytes are already arriving: re-assigning
+    // src would abort the in-flight download and reset it to zero — the exact
+    // bug the queue was built to fix — so the src must stay untouched until
+    // the window ends.
+    img.naturalWidth = 1;   // data is flowing; complete is still false
+    for (let tick = 1; tick <= 24; tick++) {
+        globalThis._dscTickIntervals();
+        assert.equal(img.src, 'https://media.giphy.com/slow-drain.gif', `no restart at tick ${tick}`);
+    }
+    assert.ok(placeholder._classes.has('dsc_gif_stalled'), 'the box degrades while the transfer keeps draining');
+    assert.equal(globalThis._dscIntervals[slot], null, 'bookkeeping stops at ~2 min');
+});
+
+test('upgradeMediaPlaceholders: a late load after the watchdog stopped still swaps over the caption', () => {
+    const placeholder = makePlaceholder({
+        'data-dsc-media-src': 'https://api.memegen.link/images/cmm/_.png',
+        'data-dsc-media-type': 'meme',
+        'data-dsc-media-alt': 'cmm: sign text',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [placeholder] : [] };
+    upgradeMediaPlaceholders(feed);
+    const img = placeholder.child;
+    for (let tick = 0; tick < 24; tick++) globalThis._dscTickIntervals();   // degrade at t=35s, stop at t=120s
+    assert.ok(placeholder._classes.has('dsc_gif_stalled'));
+    assert.equal(placeholder.child.textContent, 'cmm: sign text');
+    assert.equal(img.isConnected, true, 'the img stays mounted through the stall');
+    // The transfer drains after the watchdog stopped (a lazy image scrolled
+    // into view, a slow body): the reader is looking at THIS box, so its load
+    // event must still replace the caption with the picture.
+    img.complete = true;
+    img.naturalWidth = 600;
+    img._listeners.load?.();
+    assert.ok(!placeholder._classes.has('dsc_gif_stalled'), 'caption clears on the late load');
+    assert.ok(!placeholder._children.some(c => String(c.className).includes('dsc_media_fallback')), 'caption node removed');
+    assert.equal(img.isConnected, true);
 });
 
 test('upgradeMediaPlaceholders: a hard error retries on the ladder, then stops', () => {

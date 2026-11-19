@@ -23,15 +23,28 @@ function makeEl() {
         // innerText/textContent of a live DOM strip tags; repeat without layout.
         get innerText() { return this._html.replace(/<[^>]+>/g, ''); },
         get textContent() { return this._html.replace(/<[^>]+>/g, ''); },
-        set textContent(v) { this._html = String(v ?? ''); },
+        set textContent(v) {
+            this._html = String(v ?? '');
+            // Clearing a real element detaches all of its children.
+            if (v === '') for (const child of this.children ?? []) child.isConnected = false;
+        },
         setAttribute(k, v) { this._attrs[k] = String(v); },
         getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; },
-        appendChild(child) { (this.children ??= []).push(child); },
+        appendChild(child) { (this.children ??= []).push(child); child.parentElement = this; },
+        // Real remove() detaches the node from its parent's child list.
+        remove() {
+            const p = this.parentElement;
+            if (p?.children) {
+                const i = p.children.indexOf(this);
+                if (i >= 0) p.children.splice(i, 1);
+            }
+            this.isConnected = false;
+        },
         classList: { add() {}, remove() {}, },
         className: '',
         alt: '',
         src: '',
-        remove() {},
+        naturalWidth: 0,   // a real <img> reports 0 until the first bytes land
         // isConnected mirrors a live-DOM img inside the feed: the media
         // watchdog gates on it. Tests that exercise detachment flip this.
         isConnected: true,

@@ -758,6 +758,9 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 }
 .dsc_gif_loading.dsc_gif_sticker::after { background: transparent; }
 .dsc_gif_stalled { width: auto; padding: 8px 12px; line-height: normal; }
+/* The stalled img stays mounted (renderer.js) so a native lazy load is never
+   cancelled and its late load event can revive the box; CSS does the hiding. */
+.dsc_gif_stalled .dsc_gif_img { display: none; }
 @keyframes dsc_loading_pulse {
     0%, 100% { opacity: 0.25; }
     50% { opacity: 1; }
