@@ -75,6 +75,7 @@ export function upgradeMediaPlaceholders(root) {
     try {
         if (!root || typeof root.querySelectorAll !== 'function') return 0;
         const nodes = root.querySelectorAll('[data-dsc-media-src], [data-dsc-emote-code]');
+        const jobs = [];   // media placeholders, loaded through the queue below
         let upgraded = 0;
         for (const node of nodes) {
             // Emote chips: resolve code → URL from the LIVE manifest. The code
@@ -116,118 +117,135 @@ export function upgradeMediaPlaceholders(root) {
             img.setAttribute('decoding', 'async');
             img.setAttribute('referrerpolicy', 'no-referrer');
             img.alt = node.getAttribute?.('data-dsc-media-alt') || '';
-            img.src = rawUrl;
-            let errored = false;
-            img.addEventListener('error', () => { errored = true; trace(`media failed to load: ${rawUrl}`); });
-            // Reading-window timings: the reader stays ~1 minute after a feed
-            // renders, so all USEFUL retry work is front-loaded there
-            // (error-driven backoff ~5/10/15/20s), the box degrades to its
-            // caption at ~35s — while the reader is still looking and the
-            // bracket reads as intentional — and everything stops at ~2 min.
-            // CRITICAL: a SILENT stall (no load, no error — a slowly draining
-            // body) must never be re-triggered by re-assigning src: that
-            // aborts the in-flight download and resets it to zero. The live
-            // failure was 1.5MB gifs at ~20KB/s (~75s to finish) killed at
-            // every retry tick, then quietly finishing into the browser cache
-            // AFTER the watchdog stopped — the next reload served them
-            // instantly. The download keeps running detached from the DOM;
-            // its load event swaps the picture back in place of the caption.
-            // A silent transfer that produced NOTHING for 60s gets exactly
-            // one cache-busted restart (a dead socket can stay mute forever).
+            // src is NOT assigned here — the load queue starts this transfer
+            // when a slot frees up, so a slow link feeds pictures one/two at
+            // a time at full speed instead of starving all of them at once.
             node.classList?.add?.('dsc_gif_loading');
-            let lastAttemptTick = 0;
-            let ticks = 0;
-            let attempts = 0;
-            let degraded = false;
-            const restoreImage = () => {
-                degraded = false;
-                node.classList?.remove?.('dsc_gif_stalled');
-                node.textContent = '';
-                node.appendChild?.(img);
-            };
-            img.addEventListener('load', () => {
-                node.classList?.remove?.('dsc_gif_loading');
-                if (degraded) restoreImage();
-            });
-            const WATCHDOG_TICK_MS = 5000;
-            // All windows in ticks (1 tick = 5s): reading-window timings, and
-            // tick counters keep the schedule deterministic for the test stubs.
-            const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
-            const STOP_TICKS = 24;      // ~2 min: nobody is watching past this
-            const RESURRECT_TICK = 12;  // ~60s: one restart for a forever-silent transfer
-            // Backoff ladder after a hard error, in ticks (5s → 2, 10s → 4,
-            // 15s → 5, 20s → 6 — errors fire fast, so retries front-load the
-            // reading window).
-            const RETRY_LADDER_TICKS = [2, 4, 5, 6];
-            const watchdog = setInterval(() => {
-                // The feed was replaced (innerHTML swap) or the panel torn
-                // down: stop polling and let the nodes go — a detached img
-                // keeps issuing real network requests otherwise.
-                if (!img.isConnected) {
-                    clearInterval(watchdog);
-                    return;
-                }
-                if (img.complete && img.naturalWidth > 0) {
-                    clearInterval(watchdog);
-                    node.classList?.remove?.('dsc_gif_loading');
-                    if (degraded) restoreImage();
-                    return;
-                }
-                ticks++;
-                if (ticks >= STOP_TICKS) {
-                    clearInterval(watchdog);
-                    return;
-                }
-                if (!degraded && ticks >= DEGRADE_TICKS) {
-                    degraded = true;
-                    node.classList?.remove?.('dsc_gif_loading');
-                    node.classList?.add?.('dsc_gif_stalled');
-                    const caption = document.createElement('span');
-                    caption.className = 'dsc_media_fallback';
-                    caption.textContent = img.alt || '';
-                    node.textContent = '';
-                    node.appendChild?.(caption);
-                    // Degradation is the moment a "no GIF in the feed" report
-                    // is born — it must be visible in the diagnostic dump.
-                    recordEvent('log', `event=media_stall type=${type} degraded=true ticks=${ticks}`);
-                }
-                // Retry ONLY on a hard error (the transfer aborted — repeating
-                // the same stream is pointless, cache-bust it) via the ladder.
-                // A silent stall keeps its in-flight download: restarting it
-                // would throw away everything already buffered.
-                if (errored) {
-                    const dueTicks = attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[attempts] : Infinity;
-                    if (ticks - lastAttemptTick >= dueTicks) {
-                        attempts++;
-                        lastAttemptTick = ticks;
-                        errored = false;
-                        // Cache-bust: an identical URL can reuse the same
-                        // poisoned connection/partial cache entry.
-                        img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=${attempts}`;
-                    }
-                    return;
-                }
-                // Silent stall: exactly one mid-window restart at ~60s, only
-                // if NOTHING has happened since t=0 (no load, no error — a
-                // socket that will never speak). Already-restarted transfers
-                // never get another one.
-                if (attempts === 0 && lastAttemptTick === 0 && ticks >= RESURRECT_TICK) {
-                    attempts++;
-                    lastAttemptTick = ticks;
-                    img.src = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}dscr=resurrect`;
-                }
-            }, WATCHDOG_TICK_MS);
+            jobs.push({ node, img, url: rawUrl, type, index: jobs.length, attempts: 0, errored: false, lastAttemptTick: 0, done: false });
             node.textContent = '';
             node.appendChild?.(img);
             node.classList?.add?.(`dsc_gif_${type}`);
             upgraded++;
         }
+        if (jobs.length) runMediaLoadQueue(jobs);
         return upgraded;
     } catch {
         // The upgrade is cosmetic on top of already-safe HTML — never let it
         // break the feed write.
         return 0;
     }
+}
+
+// ── Media load queue ──
+// All pictures of one feed compete for the same link; on a slow channel N
+// parallel downloads starve each other (measured live: ~2KB/s per stream →
+// EVERY box missed the 35s degrade and fell back to text, while a queued
+// transfer finishes in 10–20s). Downloads run MAX_MEDIA_PARALLEL at a time,
+// DOM order first (top of the feed = reader's eyes), and the rest wait with
+// a spinner. Each transfer: no src restart on a silent stall (an in-flight
+// download drains into the browser cache even detached from the DOM — its
+// load event swaps the picture back over the caption); cache-busted retries
+// only on a hard error; one mid-window restart for a forever-silent socket.
+const MAX_MEDIA_PARALLEL = 2;
+const WATCHDOG_TICK_MS = 5000;
+// All windows in ticks (1 tick = 5s), per job, counted from its OWN start.
+const DEGRADE_TICKS = 7;    // ~35s: caption while the reader is still looking
+const STOP_TICKS = 24;      // ~2 min: nobody is watching past this
+const RESURRECT_TICK = 10;  // ~50s: one restart for a forever-silent transfer
+// Backoff ladder after a hard error, in ticks.
+const RETRY_LADDER_TICKS = [2, 4, 5, 6];
+
+function runMediaLoadQueue(jobs) {
+    const total = jobs.length;
+    let ticks = 0;
+    let queue = [...jobs];
+    let active = [];
+    let stopped = false;
+
+    const finishJob = (job, landed) => {
+        if (job.done) return;
+        job.done = true;
+        active = active.filter(j => j !== job);
+        if (landed) {
+            job.node.classList?.remove?.('dsc_gif_loading');
+            if (job.degraded) {
+                job.node.classList?.remove?.('dsc_gif_stalled');
+                job.node.textContent = '';
+                job.node.appendChild?.(job.img);
+            }
+        }
+    };
+
+    const degradeJob = (job) => {
+        if (job.degraded || job.done) return;
+        job.degraded = true;
+        job.node.classList?.remove?.('dsc_gif_loading');
+        job.node.classList?.add?.('dsc_gif_stalled');
+        const caption = document.createElement('span');
+        caption.className = 'dsc_media_fallback';
+        caption.textContent = job.img.alt || '';
+        job.node.textContent = '';
+        job.node.appendChild?.(caption);
+        // Degradation is the moment a "no GIF in the feed" report is born —
+        // it must be visible in the diagnostic dump; queue position shows
+        // whether the load was starved (deep in the queue) or genuinely slow.
+        recordEvent('log', `event=media_stall type=${job.type} degraded=true ticks=${ticks} pos=${job.index + 1}/${total}`);
+    };
+
+    const startJob = (job) => {
+        job.startedTick = ticks;
+        active.push(job);
+        const onWin = () => { finishJob(job, true); pump(); };
+        const onFail = () => { job.errored = true; trace(`media failed to load: ${job.url}`); };
+        job.img.addEventListener('load', onWin);
+        job.img.addEventListener('error', onFail);
+        job.img.src = job.url;
+    };
+
+    const pump = () => {
+        while (!stopped && active.length < MAX_MEDIA_PARALLEL && queue.length) {
+            startJob(queue.shift());
+        }
+    };
+
+    const watchdog = setInterval(() => {
+        ticks++;
+        // Feed replaced / panel torn down: stop everything — detached nodes
+        // would keep issuing network requests. The in-flight transfers die
+        // with the page or land in the browser cache for the next render.
+        const detached = [...active, ...queue].filter(j => j.node.isConnected === false);
+        for (const job of detached) finishJob(job, false);
+        if (!active.length && !queue.length) { clearInterval(watchdog); return; }
+        for (const job of active) {
+            if (imgSettled(job.img)) { finishJob(job, true); continue; }
+            const age = ticks - job.startedTick;
+            if (age >= STOP_TICKS) { finishJob(job, false); degradeJob(job); continue; }
+            if (age >= DEGRADE_TICKS) degradeJob(job);
+            // Retry ladder on a hard error (cache-busted: the same URL can
+            // reuse the poisoned connection). A silent transfer is NEVER
+            // restarted — it keeps draining.
+            if (job.errored && !job.done) {
+                const dueTicks = job.attempts < RETRY_LADDER_TICKS.length ? RETRY_LADDER_TICKS[job.attempts] : Infinity;
+                if (ticks - job.lastAttemptTick >= dueTicks) {
+                    job.attempts++;
+                    job.lastAttemptTick = ticks;
+                    job.errored = false;
+                    job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=${job.attempts}`;
+                }
+            } else if (job.attempts === 0 && job.lastAttemptTick === 0 && age >= RESURRECT_TICK) {
+                job.attempts++;
+                job.lastAttemptTick = ticks;
+                job.img.src = `${job.url}${job.url.includes('?') ? '&' : '?'}dscr=resurrect`;
+            }
+        }
+        pump();
+        if (!active.length && !queue.length) clearInterval(watchdog);
+    }, WATCHDOG_TICK_MS);
+    pump();
+}
+
+function imgSettled(img) {
+    return img.complete && img.naturalWidth > 0;
 }
 
 /**

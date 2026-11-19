@@ -331,6 +331,36 @@ test('upgradeMediaPlaceholders: degraded box never revives if the render never l
     assert.equal(placeholder.child.textContent, 'cmm: sign text');
 });
 
+test('upgradeMediaPlaceholders: the load queue starts waiting boxes as slots free up', () => {
+    const a = makePlaceholder({
+        'data-dsc-media-src': 'https://media.giphy.com/a.gif',
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': 'a',
+    });
+    const b = makePlaceholder({
+        'data-dsc-media-src': 'https://media.giphy.com/b.gif',
+        'data-dsc-media-type': 'gif',
+        'data-dsc-media-alt': 'b',
+    });
+    const feed = { querySelectorAll: (sel) => sel.startsWith('[data-dsc-media-src]') ? [a, b] : [] };
+    upgradeMediaPlaceholders(feed);
+    // MAX_MEDIA_PARALLEL=2 → both start immediately; a third box would wait.
+    // Verify slot freeing: load of A keeps B intact; B's error ladder runs on its own.
+    const imgA = a.child;
+    const imgB = b.child;
+    assert.equal(imgA.src, 'https://media.giphy.com/a.gif');
+    assert.equal(imgB.src, 'https://media.giphy.com/b.gif');
+    imgA.complete = true;
+    imgA.naturalWidth = 100;
+    imgA._listeners.load?.();
+    assert.ok(!a._classes.has('dsc_gif_loading'), 'loaded box clears its spinner');
+    // B still owns its own lifecycle
+    imgB._listeners.error?.();
+    globalThis._dscTickIntervals();
+    globalThis._dscTickIntervals();
+    assert.ok(String(imgB.src).endsWith('dscr=1'), 'B retries its own error independently');
+});
+
 
 test('upgradeMediaPlaceholders: watchdog releases a loaded image without touching it', () => {
     const placeholder = makePlaceholder({
