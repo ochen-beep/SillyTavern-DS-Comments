@@ -586,106 +586,117 @@ function bindSettingsPanelEvents() {
     });
 
     // change events (selects, checkboxes)
-    root.addEventListener('change', (e) => {
-        const el = e.target;
-        // Custom sound upload: a file input is not a FIELD_MAP setting, so the
-        // cfg gate below would silently drop its change event. Handle it first.
-        if (el.id === 'dsc_sound_file') {
-            const file = el.files?.[0];
-            if (file) {
-                if (file.size > 5 * 1024 * 1024) { toastr?.error(tr('File is too large. Maximum: 5 MB.', 'dscomments.file.tooLarge')); el.value = ''; return; }
-                const reader = new FileReader();
-                reader.onload = async () => {
-                    // Original extension is the fallback when the data-URL mime
-                    // doesn't map (sound.js maps known audio mimes first).
-                    const ext = (file.name.match(/\.([a-z0-9]+)\s*$/i) || [])[1];
-                    const key = await addCustomSound(file.name.replace(/\.[^.]+$/, ''), reader.result, { ext });
-                    if (key) { _missingSoundKeys.delete(key); populateSoundDropdown(); }
-                };
-                reader.readAsDataURL(file);
-                el.value = '';
-            }
-            return;
-        }
-        // The Giphy key is a localforage-backed password field, NOT a FIELD_MAP
-        // setting — it must flush before the cfg gate below (which would
-        // silently drop its change events).
-        if (el.id === 'dsc_media_giphy_key') { flushGiphyKey(); return; }
-        const cfg = FIELD_MAP[el.id];
-        if (!cfg) return;
-        if (el.id === 'dsc_apikey') { flushApiKey(); return; }
-        if (el.id === 'dsc_media_provider') syncSettingsSections();
-        if (el.id === 'dsc_media_memes') syncSettingsSections();
-        if (el.id === 'dsc_template') {
-            state.settings.promptTemplate = el.value;
-            saveSettings();
-            syncPromptEditor();
-            return;
-        }
-        if (el.id === 'dsc_profile') {
-            state.settings.profileId = el.value;
-            saveSettings();
-            // The option label already contains the model; full text is in the select's tooltip.
-            el.title = el.selectedOptions[0]?.textContent || '';
-            return;
-        }
-        if (el.id === 'dsc_sound_select') {
-            state.settings.soundId = el.value || 'default';
-            saveSettings();
-            return;
-        }
-        if (el.id === 'dsc_nosave') {
-            state.settings.noSaveMode = el.checked;
-            onNoSaveModeChanged().catch(e => error('onNoSaveModeChanged error:', e));
-            return;
-        }
-        if (cfg.type === 'checkbox') {
-            state.settings[cfg.prop] = el.checked;
-        } else if (cfg.type === 'number' || cfg.type === 'range') {
-            syncNumericInput(el);
-        } else {
-            state.settings[cfg.prop] = el.value;
-        }
-        saveSettings();
-
-        // Section visibility follow-ups
-        if (el.id === 'dsc_hist') syncSettingsSections();
-        if (el.id === 'dsc_pastcom') syncSettingsSections();
-        if (el.id === 'dsc_userposts') syncSettingsSections();
-        if (el.id === 'dsc_jb_enable') syncSettingsSections();
-        // reaction emotes: the 7TV set-id field rides this toggle
-        if (el.id === 'dsc_reaction_emotes') syncSettingsSections();
-        if (el.id === 'dsc_sound_enable') {
-            document.getElementById('dsc_sound_body').hidden = !el.checked;
-            const volume = document.getElementById('dsc_sound_volume');
-            if (volume) volume.disabled = !el.checked;
-        }
-        if (el.id === 'dsc_fontfam') { applyFontFamily(el.value); }
-        if (el.id === 'dsc_launcher_mode') { ensureLauncher(); }
-        if (el.id === 'dsc_enabled') { syncPanelToSettings().catch(e => error('syncPanelToSettings error:', e)); }
-    });
+    root.addEventListener('change', (e) => handleSettingsChange(e.target));
 
     // input events (text, number, range, textarea)
-    root.addEventListener('input', (e) => {
-        const el = e.target;
-        // The localforage-backed Giphy key first: the FIELD_MAP gate below
-        // would otherwise drop its input events (it is not a registered setting).
-        if (el.id === 'dsc_media_giphy_key') { setGiphyKey(el.value); return; }
-        const cfg = FIELD_MAP[el.id];
-        if (!cfg) return;
-        if (el.id === 'dsc_apikey') { setApiKey(el.value); return; }
-        // Not saved on every keystroke: dsc_template_text is saved by the Save
-        // button, dsc_jb_text by a change event on blur through the common
-        // FIELD_MAP path below.
-        if (el.id === 'dsc_template_text' || el.id === 'dsc_jb_text') return;
-        if (cfg.type === 'number' || cfg.type === 'range') {
-            // live: no write-back into the field, so clearing/retyping works
-            syncNumericInput(el, { live: true });
-        } else {
-            state.settings[cfg.prop] = el.value;
+    root.addEventListener('input', (e) => handleSettingsInput(e.target));
+}
+
+/**
+ * Settings panel `change` routing, extracted verbatim from the live listener
+ * so behavioral tests can dispatch an element exactly as the DOM would.
+ */
+export function handleSettingsChange(el) {
+    // Custom sound upload: a file input is not a FIELD_MAP setting, so the
+    // cfg gate below would silently drop its change event. Handle it first.
+    if (el.id === 'dsc_sound_file') {
+        const file = el.files?.[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) { toastr?.error(tr('File is too large. Maximum: 5 MB.', 'dscomments.file.tooLarge')); el.value = ''; return; }
+            const reader = new FileReader();
+            reader.onload = async () => {
+                // Original extension is the fallback when the data-URL mime
+                // doesn't map (sound.js maps known audio mimes first).
+                const ext = (file.name.match(/\.([a-z0-9]+)\s*$/i) || [])[1];
+                const key = await addCustomSound(file.name.replace(/\.[^.]+$/, ''), reader.result, { ext });
+                if (key) { _missingSoundKeys.delete(key); populateSoundDropdown(); }
+            };
+            reader.readAsDataURL(file);
+            el.value = '';
         }
+        return;
+    }
+    // The Giphy key is a localforage-backed password field, NOT a FIELD_MAP
+    // setting — it must flush before the cfg gate below (which would
+    // silently drop its change events).
+    if (el.id === 'dsc_media_giphy_key') { flushGiphyKey(); return; }
+    const cfg = FIELD_MAP[el.id];
+    if (!cfg) return;
+    if (el.id === 'dsc_apikey') { flushApiKey(); return; }
+    if (el.id === 'dsc_media_provider') syncSettingsSections();
+    if (el.id === 'dsc_media_memes') syncSettingsSections();
+    if (el.id === 'dsc_template') {
+        state.settings.promptTemplate = el.value;
         saveSettings();
-    });
+        syncPromptEditor();
+        return;
+    }
+    if (el.id === 'dsc_profile') {
+        state.settings.profileId = el.value;
+        saveSettings();
+        // The option label already contains the model; full text is in the select's tooltip.
+        el.title = el.selectedOptions[0]?.textContent || '';
+        return;
+    }
+    if (el.id === 'dsc_sound_select') {
+        state.settings.soundId = el.value || 'default';
+        saveSettings();
+        return;
+    }
+    if (el.id === 'dsc_nosave') {
+        state.settings.noSaveMode = el.checked;
+        onNoSaveModeChanged().catch(e => error('onNoSaveModeChanged error:', e));
+        return;
+    }
+    if (cfg.type === 'checkbox') {
+        state.settings[cfg.prop] = el.checked;
+    } else if (cfg.type === 'number' || cfg.type === 'range') {
+        syncNumericInput(el);
+    } else {
+        state.settings[cfg.prop] = el.value;
+    }
+    saveSettings();
+
+    // Section visibility follow-ups
+    if (el.id === 'dsc_hist') syncSettingsSections();
+    if (el.id === 'dsc_pastcom') syncSettingsSections();
+    if (el.id === 'dsc_userposts') syncSettingsSections();
+    if (el.id === 'dsc_jb_enable') syncSettingsSections();
+    // reaction emotes: the 7TV set-id field rides this toggle
+    if (el.id === 'dsc_reaction_emotes') syncSettingsSections();
+    if (el.id === 'dsc_sound_enable') {
+        document.getElementById('dsc_sound_body').hidden = !el.checked;
+        const volume = document.getElementById('dsc_sound_volume');
+        if (volume) volume.disabled = !el.checked;
+    }
+    if (el.id === 'dsc_fontfam') { applyFontFamily(el.value); }
+    if (el.id === 'dsc_launcher_mode') { ensureLauncher(); }
+    if (el.id === 'dsc_enabled') { syncPanelToSettings().catch(e => error('syncPanelToSettings error:', e)); }
+}
+
+/**
+ * Settings panel `input` routing, extracted verbatim from the live listener.
+ * The localforage-backed Giphy key must run before the FIELD_MAP gate below —
+ * the gate would otherwise drop its events (it is not a registered setting)
+ * and the resolver would run with an empty key (observed live: Giphy selected
+ * + key typed, comments still rendered text-only).
+ */
+export function handleSettingsInput(el) {
+    if (el.id === 'dsc_media_giphy_key') { setGiphyKey(el.value); return; }
+    const cfg = FIELD_MAP[el.id];
+    if (!cfg) return;
+    if (el.id === 'dsc_apikey') { setApiKey(el.value); return; }
+    // Not saved on every keystroke: dsc_template_text is saved by the Save
+    // button, dsc_jb_text by a change event on blur through the common
+    // FIELD_MAP path below.
+    if (el.id === 'dsc_template_text' || el.id === 'dsc_jb_text') return;
+    if (cfg.type === 'number' || cfg.type === 'range') {
+        // live: no write-back into the field, so clearing/retyping works
+        syncNumericInput(el, { live: true });
+    } else {
+        state.settings[cfg.prop] = el.value;
+    }
+    saveSettings();
 }
 
 // Built-in templates are read-only. Saving an active built-in forces a name
