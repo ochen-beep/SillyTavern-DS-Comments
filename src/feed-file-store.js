@@ -632,6 +632,7 @@ export function clearFeedFile() {
     if (!_mirror) return;
     if (_readOnly) return;   // the server file's state is unknown — must not delete
     _mirror.entries = {};
+    _mirrorRevision++;   // the fp cache keys on threads — a wipe changes them
     const ctx = getCtx();
     const key = _loadedKey ?? chatFileKey(ctx);
     setStorageDiag('delete', { loaded: true, result: 'queued', file: key, entryCount: 0, error: null });
