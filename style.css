@@ -761,6 +761,13 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 /* The stalled img stays mounted (renderer.js) so a native lazy load is never
    cancelled and its late load event can revive the box; CSS does the hiding. */
 .dsc_gif_stalled .dsc_gif_img { display: none; }
+/* The caption is provisional, not final: a gentle opacity breathe (no motion,
+   vestibular-safe) tells the reader the picture is still on its way. */
+.dsc_gif_stalled .dsc_media_fallback { animation: dsc_caption_breathe 2.4s ease-in-out infinite; }
+@keyframes dsc_caption_breathe {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
 @keyframes dsc_loading_pulse {
     0%, 100% { opacity: 0.25; }
     50% { opacity: 1; }
