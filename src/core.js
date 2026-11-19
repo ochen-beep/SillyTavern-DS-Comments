@@ -664,8 +664,10 @@ export async function collectRuntimeInfo() {
                 try { return _eventLogLoadedProvider?.() ?? null; } catch { return null; }
             })();
             info.chatLength = Array.isArray(ctx.chat) ? ctx.chat.length : null;
-            info.name1 = ctx.name1 ?? null;
-            info.name2 = ctx.name2 ?? null;
+            // persona/character names are user content — the dump is meant to
+            // be shared in bug reports, so only their lengths travel
+            info.personaNameLen = typeof ctx.name1 === 'string' ? ctx.name1.length : null;
+            info.characterNameLen = typeof ctx.name2 === 'string' ? ctx.name2.length : null;
             info.viewport = { w: window.innerWidth, h: window.innerHeight };
             info.isMobile = window.innerWidth < 768;
             info.currentChatId = state.currentChatId;
@@ -718,9 +720,10 @@ export async function collectRuntimeInfo() {
                     file: snap.key,
                     entryCount: keys.length,
                     current: { msgId: state.currentPostId, swipeIdx: state.currentSwipeIdx },
-                    // per-entry fingerprint presence (truncated) — flags drift;
-                    // post/swipe resolved from the entry's live slot position.
-                    fps: keys.map(k => ({
+                    // per-entry fingerprint presence — flags drift. Long chats
+                    // hold hundreds of entries; only the LATEST 20 travel (the
+                    // entries a restore/generation actually consults).
+                    fps: keys.slice(-20).map(k => ({
                         key: k,
                         fp: snap.entries[k]?.fp ? String(snap.entries[k].fp).slice(0, 8) : null,
                         genFp: snap.entries[k]?.generationFp ? String(snap.entries[k].generationFp).slice(0, 10) : null,

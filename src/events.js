@@ -29,6 +29,11 @@ let _scrollContainer = null;
 let _scrollHandler = null;
 let _candidates = new Map();
 let _scrollRaf = 0;
+// Restore-log noise gate: a pick is logged only when the chosen target
+// CHANGES. The 200-line restore ring otherwise fills with identical
+// `pick best=#N` lines on every scroll frame, pushing out the actual
+// restore decisions the dump exists to capture.
+let _lastLoggedPick = '';
 let _pickRaf = 0;
 let _suppressedRepickTimer = 0;
 let _suppressedRepickDueAt = 0;
@@ -290,10 +295,17 @@ export function initPostScrollObserver() {
             }
             if (bestEl) {
                 const mesid = bestEl.getAttribute('mesid') || '?';
-                pushRestoreLog('observer', `pick best=#${mesid} ratio=${bestRatio.toFixed(3)} candidates=${_candidates.size}`);
+                const pickKey = `#${mesid}`;
+                if (pickKey !== _lastLoggedPick) {
+                    _lastLoggedPick = pickKey;
+                    pushRestoreLog('observer', `pick best=#${mesid} ratio=${bestRatio.toFixed(3)} candidates=${_candidates.size}`);
+                }
                 observeAsyncCallback(handleBestVisible(bestEl), 'scroll restore');
             } else if (_candidates.size) {
-                pushRestoreLog('observer', `pick none candidates=${_candidates.size}`);
+                if (_lastLoggedPick !== 'none') {
+                    _lastLoggedPick = 'none';
+                    pushRestoreLog('observer', `pick none candidates=${_candidates.size}`);
+                }
             }
         });
     }
@@ -302,7 +314,11 @@ export function initPostScrollObserver() {
         if (_scrollRaf) return;
         _scrollRaf = requestAnimationFrame(() => {
             _scrollRaf = 0;
-            pushRestoreLog('observer', `scroll event top=${chatEl.scrollTop} candidates=${_candidates.size}`);
+            // Scroll frames are pure telemetry and would flood the 200-line
+            // restore ring every reading session — captured only in debug mode.
+            if (state.settings.debugMode) {
+                pushRestoreLog('observer', `scroll event top=${chatEl.scrollTop} candidates=${_candidates.size}`);
+            }
             schedulePick();
         });
     };

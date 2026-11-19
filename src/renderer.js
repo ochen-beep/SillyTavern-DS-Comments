@@ -6,6 +6,7 @@
  */
 
 import { escapeHtml, sanitize, hashHue, trace } from './core.js';
+import { recordEvent } from './event-log.js';
 import { isAllowedMediaUrl } from './media.js';
 import { getEmoteUrl } from './emotes.js';
 
@@ -177,6 +178,9 @@ export function upgradeMediaPlaceholders(root) {
                     caption.textContent = img.alt || '';
                     node.textContent = '';
                     node.appendChild?.(caption);
+                    // Degradation is the moment a "no GIF in the feed" report
+                    // is born — it must be visible in the diagnostic dump.
+                    recordEvent('log', `event=media_stall type=${type} degraded=true ticks=${ticks}`);
                 }
                 // Retry when due: a hard error fires fast, so its ladder lands
                 // inside the reading window; a stalled stream fires nothing,
