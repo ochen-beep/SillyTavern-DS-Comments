@@ -274,10 +274,10 @@ test('resolveCommentMedia: picks a random candidate, not the fixed first result'
     for (const url of seen) assert.match(url, /media\.giphy\.com\/[123]\.gif/);
 });
 
-test('resolveCommentMedia: lightest giphy rendition wins — animated webp first, mp4 skipped', async () => {
-    // Giphy docs: WEBP for display, downsampled = 6 frames = the lightest
-    // moving rendition. Ladder: ds.webp → ds.gif → fh.webp → fhs.webp →
-    // fh.gif → fhs.gif → downsized → original; downsized_small is mp4-only.
+test('resolveCommentMedia: full-frame giphy rendition wins — animated webp first, mp4 skipped', async () => {
+    // Ladder: fh.webp → fhs.webp → fh.gif → fhs.gif → downsized → original.
+    // Downsampled renditions stay unpicked even when Giphy serves them (6
+    // frames = slideshow); downsized_small is mp4-only, an <img> can't play it.
     fetchHandler = () => ({
         ok: true,
         json: async () => ({ data: [
@@ -293,22 +293,7 @@ test('resolveCommentMedia: lightest giphy rendition wins — animated webp first
     const msgs = [{ username: 'a', content: 'x', gif: 'cat' }];
     const n = await resolveCommentMedia(msgs, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
     assert.equal(n, 1);
-    assert.equal(msgs[0].media.url, 'https://media.giphy.com/ds.webp', 'animated downsampled webp beats every gif');
-    // no webp on the downsampled variant → downsampled gif still beats the
-    // smooth renditions (6 frames travel lighter than any full gif)
-    fetchHandler = () => ({
-        ok: true,
-        json: async () => ({ data: [
-            { images: {
-                fixed_height_downsampled: { url: 'https://media.giphy.com/ds.gif' },
-                fixed_height: { url: 'https://media.giphy.com/mid.gif', webp: 'https://media.giphy.com/mid.webp' },
-                downsized: { url: 'https://media.giphy.com/heavy.gif' },
-            } },
-        ] }),
-    });
-    const msgs2 = [{ username: 'b', content: 'x', gif: 'cat' }];
-    await resolveCommentMedia(msgs2, { provider: 'giphy', giphyKey: 'G', rating: 'medium' });
-    assert.equal(msgs2[0].media.url, 'https://media.giphy.com/ds.gif', 'downsampled gif before smooth webp');
+    assert.equal(msgs[0].media.url, 'https://media.giphy.com/mid.webp', 'full-frame webp beats every gif incl. the 6-frame downsampled');
     // gif-only shapes keep working: smooth fixed_height beats fixed_height_small
     fetchHandler = () => ({
         ok: true,
