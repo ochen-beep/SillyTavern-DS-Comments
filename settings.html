@@ -64,14 +64,8 @@
             <label class="dsc_toggle_row">
                 <input type="checkbox" id="dsc_stream" class="checkbox">
                 <span><b data-i18n="dscomments.settings.stream">Streaming (SSE)</b>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.streamHint">Proxies behind Cloudflare tear down long non-streaming replies (524). Turn off only if your gateway cannot do SSE.</small></span>
+                    <small class="dsc_hint" data-i18n="dscomments.settings.streamHint">Enable if requests time out or if the proxy supports streaming only.</small></span>
             </label>
-
-            <div class="dsc_field_group">
-                <span class="dsc_field_label"><i class="fa-solid fa-code fa-fw"></i> <span data-i18n="dscomments.settings.extraBody">Extra request params (JSON)</span></span>
-                <input type="text" id="dsc_extrabody" class="dsc_input" placeholder='{"reasoning_effort":"none"}' autocomplete="off" spellcheck="false">
-                <small class="dsc_hint" data-i18n="dscomments.settings.extraBodyHint">Merged into the request body for both sources. The "stream" key is forbidden — it is owned by the Streaming toggle.</small>
-            </div>
 
             <div class="dsc_field_group dsc_field_num">
                 <span class="dsc_field_label"><span data-i18n="dscomments.settings.count">Comments per generation</span></span>
@@ -109,6 +103,10 @@
             <i class="fa-solid fa-chevron-down dsc_chevron"></i>
         </button>
         <div class="dsc_section_body" hidden>
+            <div class="dsc_field_group">
+                <span class="dsc_field_label"><i class="fa-solid fa-code fa-fw"></i> <span data-i18n="dscomments.settings.extraBody">Extra request params (JSON)</span></span>
+                <input type="text" id="dsc_extrabody" class="dsc_input" placeholder='{"reasoning_effort":"none"}' autocomplete="off" spellcheck="false">
+            </div>
             <div class="dsc_grid2">
                 <div class="dsc_field_group">
                     <span class="dsc_field_label"><i class="fa-solid fa-text-height fa-fw"></i> <span data-i18n="dscomments.settings.font">Font</span></span>
@@ -140,20 +138,16 @@
             </div>
             <div class="dsc_field_group">
                 <span class="dsc_field_label"><i class="fa-solid fa-list-check fa-fw"></i> <span data-i18n="dscomments.settings.context">Context</span></span>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_hist" class="checkbox"> <span data-i18n="dscomments.settings.history">Chat history</span></label>
-                <div id="dsc_depth_group" class="dsc_field_num" hidden>
-                    <span class="dsc_field_label" data-i18n="dscomments.settings.depth">Context depth</span>
-                    <input type="number" id="dsc_depth" class="dsc_input dsc_input_num" min="2" max="50" value="4">
-                </div>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_persona" class="checkbox"> <span data-i18n="dscomments.settings.persona">Persona</span></label>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_chardesc" class="checkbox"> <span data-i18n="dscomments.settings.character">Character description</span></label>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_pastcom" class="checkbox"> <span data-i18n="dscomments.settings.pastComments">Past comment threads</span></label>
-                <div id="dsc_pastcom_group" class="dsc_field_num" hidden>
-                    <span class="dsc_field_label" data-i18n="dscomments.settings.pastCommentsDepth">Past posts included</span>
-                    <input type="number" id="dsc_pastcom_depth" class="dsc_input dsc_input_num" min="1" max="10" value="2">
-                </div>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_hist" class="checkbox"> <span data-i18n="dscomments.settings.history">Chat history</span>
+                    <span class="dsc_row_num" id="dsc_depth_group" hidden><input type="number" id="dsc_depth" class="dsc_input dsc_input_num" min="2" max="50" value="4"></span>
+                </label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_persona" class="checkbox"> <span data-i18n="dscomments.settings.persona">Persona {{user}}</span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_chardesc" class="checkbox"> <span data-i18n="dscomments.settings.character">Character {{char}}</span></label>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_pastcom" class="checkbox"> <span data-i18n="dscomments.settings.pastComments">Past comment threads</span>
+                    <span class="dsc_row_num" id="dsc_pastcom_group" hidden><input type="number" id="dsc_pastcom_depth" class="dsc_input dsc_input_num" min="1" max="10" value="2"></span>
+                </label>
                 <div class="dsc_field_group">
-                    <span class="dsc_field_label"><i class="fa-solid fa-image fa-fw"></i> <span data-i18n="dscomments.settings.images">Post images</span></span>
+                    <span class="dsc_field_label"><i class="fa-solid fa-image fa-fw"></i> <span data-i18n="dscomments.settings.images">Send post images in the request</span></span>
                     <select id="dsc_images" class="dsc_select">
                         <option value="off" data-i18n="dscomments.settings.imagesOff">Off</option>
                         <option value="auto" data-i18n="dscomments.settings.imagesAuto">Auto (multimodal)</option>
@@ -169,7 +163,7 @@
                         <option value="off" data-i18n="dscomments.settings.mediaOff">Off</option>
                         <option value="giphy" data-i18n="dscomments.settings.mediaGiphy">Giphy</option>
                     </select>
-                    <small class="dsc_hint" data-i18n="dscomments.settings.mediaHint">Commenters can attach reaction GIFs and stickers from Giphy. You need a free API key (developers.giphy.com).</small>
+                    <small class="dsc_hint"><span data-i18n="dscomments.settings.mediaHint">Commenters can attach reaction GIFs and stickers from Giphy. A free API key is required:</span> <a href="https://developers.giphy.com/api/apikey/" target="_blank" rel="noopener noreferrer" data-i18n="dscomments.settings.mediaHintLink">developers.giphy.com</a></small>
                     <div id="dsc_media_provider_body" hidden>
                         <span class="dsc_field_label" data-i18n="dscomments.settings.mediaRating">Content rating</span>
                         <select id="dsc_media_rating" class="dsc_select">
@@ -178,25 +172,21 @@
                             <option value="medium" data-i18n="dscomments.settings.mediaRatingMedium">Medium</option>
                             <option value="high" data-i18n="dscomments.settings.mediaRatingHigh">High</option>
                         </select>
-                        <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_stickers" class="checkbox"> <span data-i18n="dscomments.settings.mediaStickers">Stickers (transparent)</span></label>
+                        <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_stickers" class="checkbox"> <span data-i18n="dscomments.settings.mediaStickers">Stickers (transparent)</span>
+                            <input type="number" id="dsc_sticker_max" class="dsc_input dsc_input_num" min="0" max="10" value="1">
+                        </label>
                         <div class="dsc_field_group dsc_field_num">
                             <span class="dsc_field_label"><span data-i18n="dscomments.settings.gifMax">GIFs per generation</span></span>
                             <input type="number" id="dsc_gif_max" class="dsc_input dsc_input_num" min="0" max="10" value="2">
-                        </div>
-                        <div class="dsc_field_group dsc_field_num">
-                            <span class="dsc_field_label"><span data-i18n="dscomments.settings.stickerMax">Stickers per generation</span></span>
-                            <input type="number" id="dsc_sticker_max" class="dsc_input dsc_input_num" min="0" max="10" value="1">
                         </div>
                         <span class="dsc_field_label" id="dsc_media_giphy_key_label" data-i18n="dscomments.settings.mediaGiphyKey">Giphy API key</span>
                         <input type="password" id="dsc_media_giphy_key" class="dsc_input" placeholder="dc6za..." autocomplete="off">
                         <button id="dsc_giphy_test" class="dsc_btn_action" type="button" style="margin-top:6px">▶ <span data-i18n="dscomments.settings.mediaTestKey">Test key</span></button>
                     </div>
                 </div>
-                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_memes" class="checkbox"> <span data-i18n="dscomments.settings.mediaMemes">Memes (memegen.link)</span></label>
-                <div class="dsc_field_group dsc_field_num" id="dsc_meme_max_group" hidden>
-                    <span class="dsc_field_label"><span data-i18n="dscomments.settings.memeMax">Memes per generation</span></span>
-                    <input type="number" id="dsc_meme_max" class="dsc_input dsc_input_num" min="0" max="5" value="1">
-                </div>
+                <label class="dsc_toggle_row"><input type="checkbox" id="dsc_media_memes" class="checkbox"> <span data-i18n="dscomments.settings.mediaMemes">Memes (memegen.link)</span>
+                    <span class="dsc_row_num" id="dsc_meme_max_group" hidden><input type="number" id="dsc_meme_max" class="dsc_input dsc_input_num" min="0" max="5" value="1"></span>
+                </label>
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_reaction_emotes" class="checkbox"> <span data-i18n="dscomments.settings.reactionEmotes">Reaction emotes (meme pack)</span></label>
                 <input type="text" id="dsc_emote_set_id" class="dsc_input" data-i18n="[placeholder]dscomments.settings.emoteSetIdPh" placeholder="7TV emote-set id (optional)" autocomplete="off" spellcheck="false">
                 <label class="dsc_toggle_row"><input type="checkbox" id="dsc_lore_enable" class="checkbox"> <span data-i18n="dscomments.settings.lore">World information</span></label>
@@ -218,7 +208,7 @@
         </div>
     </div>
 
-    <!-- ── Prompt and jailbreak ── -->
+    <!-- ── Prompt ── -->
     <div class="dsc_section">
         <button class="dsc_section_header" aria-expanded="false" type="button">
             <span><i class="fa-solid fa-wrench fa-fw"></i> <span data-i18n="dscomments.settings.prompt">Prompt</span></span>
@@ -250,19 +240,19 @@
                     <option value="auto" data-i18n="dscomments.settings.structuredAuto">Auto (supported)</option>
                     <option value="always" data-i18n="dscomments.settings.structuredAlways">Always</option>
                 </select>
-                <small class="dsc_hint" data-i18n="dscomments.settings.structuredHint">Enforces the JSON contract at the API level: the model must return the comments object, so refusals and broken arrays largely disappear. Replaces the assistant-role jailbreak on supported sources.</small>
+                <small class="dsc_hint" data-i18n="dscomments.settings.structuredHint">Enforces the JSON contract in the request. Replaces the assistant-role prefill on supported sources.</small>
             </div>
 
-            <!-- Jailbreak (nested) -->
+            <!-- Additional instruction (nested) -->
             <label class="dsc_toggle_row"><input type="checkbox" id="dsc_jb_enable" class="checkbox">
-                <span><b data-i18n="dscomments.settings.jailbreak">Jailbreak block</b></span></label>
+                <span><b data-i18n="dscomments.settings.jailbreak">Additional instruction</b></span></label>
             <div id="dsc_jb_body" hidden>
                 <div class="dsc_field_group">
                     <span class="dsc_field_label" data-i18n="dscomments.settings.role">Role</span>
                     <select id="dsc_jb_role" class="dsc_select"><option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option></select>
                 </div>
                 <div class="dsc_field_group dsc_field_group_separated">
-                    <span class="dsc_field_label" data-i18n="dscomments.settings.jailbreakBlock">Jailbreak block</span>
+                    <span class="dsc_field_label" data-i18n="dscomments.settings.jailbreakBlock">Instruction text</span>
                     <textarea id="dsc_jb_text" class="dsc_prompt_textarea" rows="6" spellcheck="false"></textarea>
                 </div>
             </div>
@@ -291,7 +281,6 @@
                 <button id="dsc_dump_logs" class="dsc_btn_action" type="button" style="width:100%;background:rgba(120,180,255,0.12);color:#a0c4ff;border-color:rgba(120,180,255,0.25)">
                     <i class="fa-solid fa-file-arrow-down fa-fw"></i> <span data-i18n="dscomments.settings.dumpLogs">Export logs (.json)</span>
                 </button>
-                <small class="dsc_hint" data-i18n="dscomments.debug.exportHint">The dump contains technical logs and metadata, without scene text, prompts, or model responses.</small>
             </div>
         </div>
     </div>

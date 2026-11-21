@@ -609,6 +609,12 @@ dialog.dsc_lightbox::backdrop { background: rgba(0, 0, 0, 0.9); }
 .dsc_field_num { display: flex; align-items: center; gap: 10px; }
 .dsc_field_num .dsc_field_label { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
 .dsc_field_num .dsc_input_num { flex: 0 0 84px; max-width: 84px; }
+/* Paired toggle rows (setting + inline number): the field hugs the right edge.
+   The input lives INSIDE the <label> — clicks on it focus the field and never
+   flip the checkbox (interactive children bypass label activation). */
+.dsc_toggle_row > .dsc_input_num, .dsc_row_num { margin-left: auto; align-self: center; }
+.dsc_row_num { display: flex; }
+.dsc_toggle_row .dsc_input_num { flex: 0 0 72px; width: 72px; max-width: 72px; }
 .dsc_grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* Segmented source picker */
