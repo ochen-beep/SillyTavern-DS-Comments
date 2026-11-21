@@ -120,7 +120,7 @@ const LF_7TV_KEY = 'DSComments_7tvSet_setcached';
 
 test('SWR: a persisted 7TV set serves chips first, network only revalidates in background', async () => {
     await SillyTavern.libs.localforage.setItem(LF_7TV_KEY, {
-        ts: Date.now() - 3 * 24 * 60 * 60 * 1000,   // 3 days old — far past freshness
+        ts: Date.now() - 3 * 24 * 60 * 60 * 1000,   // any age serves — the numeric ts only shapes the payload
         map: { CachedEmote: 'https://cdn.7tv.app/emote/cached/2x.webp' },
     });
     const realFetch = globalThis.fetch;
@@ -174,6 +174,38 @@ test('SWR: a failed background revalidate keeps the cached set serving', async (
         await new Promise(r => setTimeout(r, 30));   // revalidate fails
         assert.equal(getEmoteUrl('KeptEmote'), 'https://cdn.7tv.app/emote/kept/2x.webp',
             'failure must NOT null the cached set');
+    } finally {
+        globalThis.fetch = realFetch;
+        await SillyTavern.libs.localforage.removeItem(LF_7TV_KEY);
+        _setEmoteManifest({});
+    }
+});
+
+test('SWR: exactly one background refresh per session per set id', async () => {
+    await SillyTavern.libs.localforage.setItem(LF_7TV_KEY, {
+        ts: Date.now() - 3 * 24 * 60 * 60 * 1000,
+        map: { CachedEmote: 'https://cdn.7tv.app/emote/cached/2x.webp' },
+    });
+    let sevenTvHits = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u === 'https://7tv.io/v3/emote-sets/setcached') {
+            sevenTvHits++;
+            return { ok: true, json: async () => ({ emotes: [{ id: 'bg', name: 'BgEmote' }] }) };
+        }
+        if (u.endsWith('/emotes/manifest.json')) return { ok: true, json: async () => ({ emotes: {} }) };
+        throw new Error(`unexpected fetch ${u}`);
+    };
+    try {
+        _setEmoteManifest({});
+        state.settings.emoteSetId = 'setcached';
+        await refreshEmoteManifest();
+        await refreshEmoteManifest();   // same session, same set id — cache is warm
+        await new Promise(r => setTimeout(r, 30));   // let the single background refresh land
+        assert.equal(sevenTvHits, 1, 'repeated touches must not re-hit the network');
+        assert.equal(getEmoteUrl('BgEmote'), 'https://cdn.7tv.app/emote/bg/2x.webp',
+            'the one refresh swapped in the fresh set');
     } finally {
         globalThis.fetch = realFetch;
         await SillyTavern.libs.localforage.removeItem(LF_7TV_KEY);

@@ -31,8 +31,7 @@ export function _setEmoteManifest({ builtin = null, sevenTv = null, sevenTvSetId
     _builtin = builtin;
     _sevenTv = sevenTv;
     _sevenTvSetId = sevenTvSetId;
-    _sevenTvTs = sevenTv ? Date.now() : 0;
-    _sevenTvFailCount = 0;
+    _sevenTvRefreshedFor = '';
     _sevenTvLastAttemptAt = 0;
     _remerge();
 }
@@ -64,26 +63,23 @@ async function loadBuiltin(signal) {
     return _builtin;
 }
 
-// 7TV set persistence + stale-while-revalidate. The reader's attention span
-// after a generation is ~1 minute, so chips must be ready BEFORE the network
-// is: the manifest (stable data — emote ids live for days) persists in
-// localforage and serves the feed at ANY age, while freshness is checked in
-// the background. A flaky CDN can then never blank a reading session that a
-// previous one already warmed.
+// 7TV set persistence + stale-while-revalidate, one refresh per session. The
+// reader's attention span after a generation is ~1 minute, so chips must be
+// ready BEFORE the network is: the manifest (stable data) persists in
+// localforage and serves the feed at ANY age, while the first touch of each
+// set id per page load fires ONE background freshness check — edits made on
+// 7tv.io land on the next page load, and a flaky CDN can never blank a
+// reading session that a previous one already warmed.
 const LF_7TV_PREFIX = 'DSComments_7tvSet_';
-const SEVEN_TV_STALE_MS = 24 * 60 * 60 * 1000;          // revalidate daily
-// Ladder for failed freshness checks — sparse on purpose: failures never
-// block the reader (cached set keeps serving), so attempts piggyback on the
-// natural call points (init warmup, generations) instead of timers.
-const SEVEN_TV_BACKOFF_MS = [1, 5, 15].map(m => m * 60 * 1000);
 const SEVEN_TV_FETCH_TIMEOUT_MS = 20000;                // big JSON on a slow link (8s default timed out live)
-const SEVEN_TV_COLD_BACKOFF_MS = SEVEN_TV_BACKOFF_MS[0];
+// Cold-fetch guard: with no persisted copy a hung CDN would add its full
+// timeout to every generation — one attempt per minute caps that.
+const SEVEN_TV_COLD_RETRY_MS = 60 * 1000;
 
 let _sevenTvSetId = '';
 let _sevenTv = null;
-let _sevenTvTs = 0;                // when the current _sevenTv data was fetched
-let _sevenTvFailCount = 0;         // consecutive failed freshness checks
-let _sevenTvLastAttemptAt = 0;
+let _sevenTvRefreshedFor = '';     // setId whose persisted copy had its one background refresh
+let _sevenTvLastAttemptAt = 0;     // cold-fetch guard
 
 function _lf() {
     try { return SillyTavern?.libs?.localforage ?? null; } catch { return null; }
@@ -117,37 +113,33 @@ async function fetchSevenTvSet(setId, signal) {
 function _adoptSevenTv(setId, map) {
     _sevenTv = map;
     _sevenTvSetId = setId;
-    _sevenTvTs = Date.now();
-    _lfPutSevenTv(setId, { ts: _sevenTvTs, map });
+    _sevenTvRefreshedFor = setId;   // fresh from the network — no background check owed
+    _lfPutSevenTv(setId, { ts: Date.now(), map });
     _remerge();
 }
 
-/** Background freshness check for an already-serving cached set. Fire-and-
- *  forget: the reader is covered, so the generation that triggered this must
- *  not wait on the network. */
-function _maybeRevalidate(setId) {
-    const now = Date.now();
-    if (now - _sevenTvTs < SEVEN_TV_STALE_MS) return;
-    const backoff = SEVEN_TV_BACKOFF_MS[Math.min(_sevenTvFailCount, SEVEN_TV_BACKOFF_MS.length - 1)];
-    if (now - _sevenTvLastAttemptAt < backoff) return;
-    _sevenTvLastAttemptAt = now;
+/** The one background freshness check per session for an already-serving
+ *  cached set. Fire-and-forget: the reader is covered, so the generation that
+ *  triggered this must not wait on the network; a failure just waits for the
+ *  next page load. */
+function _maybeRefreshSevenTv(setId) {
+    if (_sevenTvRefreshedFor === setId) return;
+    _sevenTvRefreshedFor = setId;
     fetchSevenTvSet(setId)
         .then((map) => {
-            _sevenTvFailCount = 0;
             _adoptSevenTv(setId, map);
-            trace(`emotes: 7TV set ${setId} revalidated (${Object.keys(map).length})`);
+            trace(`emotes: 7TV set ${setId} refreshed (${Object.keys(map).length})`);
         })
         .catch((e) => {
-            if (e?.name === 'AbortError') return;   // page teardown — nothing to back off
-            _sevenTvFailCount++;
-            warn(`emotes: 7TV set ${setId} revalidate failed — cached set keeps serving`, e);
+            if (e?.name === 'AbortError') return;   // page teardown — nothing to log
+            warn(`emotes: 7TV set ${setId} refresh failed — cached set keeps serving`, e);
             recordEvent('log', `event=emotes_manifest pack=7tv status=stale error=${e?.message || e}`);
         });
 }
 
 async function loadSevenTvSet(setId, signal) {
     if (_sevenTv && _sevenTvSetId === setId) {
-        _maybeRevalidate(setId);
+        _maybeRefreshSevenTv(setId);
         return _sevenTv;
     }
     // Serve the persisted manifest at any age — chips render while the
@@ -156,26 +148,23 @@ async function loadSevenTvSet(setId, signal) {
     if (cached && Object.keys(cached.map).length) {
         _sevenTv = cached.map;
         _sevenTvSetId = setId;
-        _sevenTvTs = cached.ts;
         _remerge();
-        _maybeRevalidate(setId);
+        _maybeRefreshSevenTv(setId);
         return _sevenTv;
     }
     // Cold (no persisted copy): the generation path waits for one fetch.
     const now = Date.now();
-    if (_sevenTvLastAttemptAt && now - _sevenTvLastAttemptAt < SEVEN_TV_COLD_BACKOFF_MS) {
+    if (_sevenTvLastAttemptAt && now - _sevenTvLastAttemptAt < SEVEN_TV_COLD_RETRY_MS) {
         _sevenTvSetId = setId;
         return null;
     }
     try {
         const map = await fetchSevenTvSet(setId, signal);
-        _sevenTvFailCount = 0;
         _adoptSevenTv(setId, map);
         trace(`emotes: 7TV set ${setId} loaded (${Object.keys(map).length})`);
     } catch (e) {
         if (e?.name === 'AbortError') throw e;   // a cancelled generation must surface as cancelled
         _sevenTvSetId = setId;
-        _sevenTvFailCount++;
         _sevenTvLastAttemptAt = Date.now();
         warn(`emotes: 7TV set ${setId} unavailable — built-in pack only (cold retry in 1 min)`, e);
         recordEvent('log', `event=emotes_manifest pack=7tv status=unavailable error=${e?.message || e}`);
