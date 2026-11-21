@@ -1,5 +1,5 @@
 {
-  "_comment": "Built-in reaction emote pack. Curated BetterTTV global emotes, hotlinked from their CDN (webp, 2x). Extend freely: code → image URL. Codes are what the model is taught to emit in reactions.",
+  "_comment": "Built-in reaction emote pack — the whitelist the model is taught to emit in reactions. Sources: Twitch global emotes (native, dark/2.0), curated BetterTTV globals (webp, 2x), 7TV global set + KEKW (cdn.7tv.app, 2x.webp). Extend freely: code → image URL; only codes listed here render, unknown ones degrade to text.",
   "emotes": {
     "DatSauce": "https://cdn.betterttv.net/emote/54fa903b01e468494b85b53f/2x.webp",
     "ForeverAlone": "https://cdn.betterttv.net/emote/54fa909b01e468494b85b542/2x.webp",
@@ -24,6 +24,33 @@
     "FeelsAmazingMan": "https://cdn.betterttv.net/emote/5733ff12e72c3c0814233e20/2x.webp",
     "DuckerZ": "https://cdn.betterttv.net/emote/573d38b50ffbf6cc5cc38dc9/2x.webp",
     "Wowee": "https://cdn.betterttv.net/emote/58d2e73058d8950a875ad027/2x.webp",
-    "DogChamp": "https://cdn.betterttv.net/emote/5ffdf28dc96152314ad63960/2x.webp"
+    "DogChamp": "https://cdn.betterttv.net/emote/5ffdf28dc96152314ad63960/2x.webp",
+    "Kappa": "https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0",
+    "DansGame": "https://static-cdn.jtvnw.net/emoticons/v2/33/default/dark/2.0",
+    "4Head": "https://static-cdn.jtvnw.net/emoticons/v2/354/default/dark/2.0",
+    "ResidentSleeper": "https://static-cdn.jtvnw.net/emoticons/v2/245/default/dark/2.0",
+    "BibleThump": "https://static-cdn.jtvnw.net/emoticons/v2/22639/default/dark/2.0",
+    "NotLikeThis": "https://static-cdn.jtvnw.net/emoticons/v2/58765/default/dark/2.0",
+    "HeyGuys": "https://static-cdn.jtvnw.net/emoticons/v2/30259/default/dark/2.0",
+    "SeemsGood": "https://static-cdn.jtvnw.net/emoticons/v2/64138/default/dark/2.0",
+    "PJSalt": "https://static-cdn.jtvnw.net/emoticons/v2/362/default/dark/2.0",
+    "WutFace": "https://static-cdn.jtvnw.net/emoticons/v2/28087/default/dark/2.0",
+    "CoolCat": "https://static-cdn.jtvnw.net/emoticons/v2/58127/default/dark/2.0",
+    ":tf:": "https://cdn.betterttv.net/emote/54fa8f1401e468494b85b537/2x.webp",
+    "D:": "https://cdn.betterttv.net/emote/55028cd2135896936880fdd7/2x.webp",
+    "KKona": "https://cdn.betterttv.net/emote/566ca04265dbbdab32ec054a/2x.webp",
+    "KEKW": "https://cdn.7tv.app/emote/01F61B1440000991F7SWQNMVX7/2x.webp",
+    "FeelsOkayMan": "https://cdn.7tv.app/emote/01GB46137R000BJ5HR8F6XV8J1/2x.webp",
+    "FeelsStrongMan": "https://cdn.7tv.app/emote/01GB4EV0Q800090V9B3D8CGEHV/2x.webp",
+    "FeelsWeirdMan": "https://cdn.7tv.app/emote/01GB4FWTR8000DGEZ8VYY59RBN/2x.webp",
+    "FeelsDankMan": "https://cdn.7tv.app/emote/01GB9W8JN80004CKF2H1TWA99H/2x.webp",
+    "peepoHappy": "https://cdn.7tv.app/emote/01GAZ199Z8000FEWHS6AT5QZV0/2x.webp",
+    "peepoSad": "https://cdn.7tv.app/emote/01GAZ4SBX80007YCE2RXBT44B2/2x.webp",
+    "ApuApustaja": "https://cdn.7tv.app/emote/01GGCQPCGR000C7MT8JZGP6E89/2x.webp",
+    "AYAYA": "https://cdn.7tv.app/emote/01GB32XE6R00018VJGJ4A9BNCV/2x.webp",
+    "WAYTOODANK": "https://cdn.7tv.app/emote/01G98W833R0000BRQD106P0ZNT/2x.webp",
+    "EZ": "https://cdn.7tv.app/emote/01GB4CK01800090V9B3D8CGEEX/2x.webp",
+    "PartyParrot": "https://cdn.7tv.app/emote/01FKSDK14G0008TM5NY9QEG0QV/2x.webp",
+    "Gayge": "https://cdn.7tv.app/emote/01G4GQC5H0000D3DGNAYJJP8EB/2x.webp"
   }
 }

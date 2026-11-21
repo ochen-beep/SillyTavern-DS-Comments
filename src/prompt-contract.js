@@ -93,9 +93,10 @@ const oneMediaFieldRule = (names) => `
 - A message carries at most ONE media field (${names.map(n => `"${n}"`).join(', ')})`;
 
 /**
- * Reaction emotes: teaches the model the renderable codes of the CURRENT
- * emote pack (built-in + user's 7TV set). Codes without the pack behind them
- * are never listed, so the model can't emit dead codes.
+ * Reaction emotes: teaches a few famous anchor codes; the renderer resolves
+ * any installed code, so the model's priors cover the rest of the pack —
+ * famous codes it already knows render without being listed. Anchors missing
+ * from the pack are dropped by getEmoteCodes — dead codes are never taught.
  * @param {string[]} codes
  * @returns {string}
  */
@@ -103,10 +104,9 @@ function emoteSection(codes) {
     return `
 ## REACTION EMOTES
 
-- In "reactions", "emoji" may be an emote CODE from this pack instead of a unicode emoji:
-${codes.join(', ')}
+- In "reactions", "emoji" may be a Twitch-style emote CODE instead of a unicode emoji, e.g.: ${codes.join(', ')}
 - These are Twitch/Discord-style meme emotes — use them for meme moods (cope, hype, cringe, dread, smug); keep plain unicode emoji for simple emotions
-- Only codes from the list render as pictures; anything else silently shows as text
+- Other well-known emote codes render as pictures too; unknown or invented ones silently show as text
 - Emotes are reactions, not message text — "content" still carries the words`;
 }
 

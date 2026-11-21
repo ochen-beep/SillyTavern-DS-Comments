@@ -6,8 +6,10 @@
 import '../test-helpers/stub-runtime.mjs';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { state } from '../src/core.js';
-import { _setEmoteManifest, refreshEmoteManifest, getEmoteUrl, getEmoteCodes } from '../src/emotes.js';
+import { _setEmoteManifest, refreshEmoteManifest, getEmoteUrl, getEmoteCodes, TEACH_ANCHORS } from '../src/emotes.js';
 
 beforeEach(() => {
     state.settings = { reactionEmotes: true, emoteSetId: '' };
@@ -38,16 +40,26 @@ test('user 7TV set overrides builtin codes with the same name', () => {
     assert.equal(getEmoteUrl('KEKW'), 'https://cdn.7tv.app/emote/user/2x.webp');
 });
 
-test('getEmoteCodes: full pack, sorted', () => {
-    const big = {};
-    for (let i = 0; i < 60; i++) big[`Emote${String(i).padStart(2, '0')}`] = `https://cdn/u/${i}.webp`;
-    _setEmoteManifest({ builtin: big });
-    const codes = getEmoteCodes();
-    assert.equal(codes.length, 60);
-    assert.deepEqual(codes, [...codes].sort());
-    // small packs pass through whole
-    _setEmoteManifest({ builtin: { monkaS: 'x' } });
-    assert.deepEqual(getEmoteCodes(), ['monkaS']);
+test('getEmoteCodes: user set first, anchors fill, capped — nothing dead taught', () => {
+    _setEmoteManifest({
+        builtin: { monkaS: 'u1', NotAnAnchor: 'u2' },
+        sevenTv: { Zeta: 'u3', Alpha: 'u4', KEKW: 'u5' },   // the set overrides the KEKW anchor
+        sevenTvSetId: 'set1',
+    });
+    assert.deepEqual(getEmoteCodes(), ['Alpha', 'KEKW', 'Zeta', 'monkaS'],
+        'set codes first (sorted), anchors fill after, the set override dedupes the anchor');
+    const bigSet = {};
+    for (let i = 0; i < 30; i++) bigSet[`SetEmote${String(i).padStart(2, '0')}`] = `u${i}`;
+    _setEmoteManifest({ builtin: {}, sevenTv: bigSet, sevenTvSetId: 'set2' });
+    const capped = getEmoteCodes();
+    assert.equal(capped.length, 12, 'the taught list never exceeds the cap');
+    assert.deepEqual(capped, [...capped].sort(), 'set codes stay sorted/deterministic');
+    assert.ok(capped.every(c => c.startsWith('SetEmote')), 'a big set crowds the anchors out');
+    _setEmoteManifest({ builtin: { monkaS: 'u1' } });
+    assert.deepEqual(getEmoteCodes(), ['monkaS'],
+        'no set → anchors only, and an anchor the pack lacks is never taught dead');
+    _setEmoteManifest({ builtin: {} });
+    assert.deepEqual(getEmoteCodes(), []);
 });
 
 test('refreshEmoteManifest: reacts to settings and fetches the 7TV set', async () => {
@@ -209,6 +221,71 @@ test('SWR: exactly one background refresh per session per set id', async () => {
     } finally {
         globalThis.fetch = realFetch;
         await SillyTavern.libs.localforage.removeItem(LF_7TV_KEY);
+        _setEmoteManifest({});
+    }
+});
+
+// ── shipped pack breadth + real 7TV set fixtures ──
+
+test('shipped manifest covers the codes the model hallucinates in the wild', () => {
+    const manifest = JSON.parse(readFileSync(
+        fileURLToPath(new URL('../emotes/manifest.json', import.meta.url)), 'utf8'));
+    const emotes = manifest.emotes;
+    const codes = Object.keys(emotes);
+    assert.ok(codes.length >= 45, `pack must stay broad, got ${codes.length}`);
+    for (const code of ['KEKW', 'WutFace', 'Kappa', 'FeelsOkayMan', 'peepoHappy', 'ApuApustaja', 'BibleThump']) {
+        assert.ok(emotes[code], `commonly hallucinated code missing: ${code}`);
+    }
+    for (const [code, url] of Object.entries(emotes)) {
+        assert.match(url, /^https:\/\//, `code ${code} must hotlink over https`);
+    }
+    for (const anchor of TEACH_ANCHORS) {
+        assert.ok(emotes[anchor], `taught anchor missing from the shipped pack: ${anchor}`);
+    }
+});
+
+test('real 7TV sets merge over the builtin pack; an id switch swaps the set', async () => {
+    // Fixtures mirror the live 7tv.io responses of these two public sets.
+    const SET_A = '01M6K7VCV83P707K2521TM39KY';
+    const SET_B = '01J7K1Y0ZG0003R88FPG3R1PST';
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u.endsWith(`/emote-sets/${SET_A}`)) {
+            return { ok: true, json: async () => ({ emotes: [
+                { id: '01F6MZGCNG000255K4X1K7NTHR', name: 'GIGACHAD' },
+                { id: '01F61B1440000991F7SWQNMVX7', name: 'KEKW' },
+            ] }) };
+        }
+        if (u.endsWith(`/emote-sets/${SET_B}`)) {
+            return { ok: true, json: async () => ({ emotes: [
+                { id: '01HD92YYE8000DW97PFPF49BZG', name: 'BLYAT' },
+            ] }) };
+        }
+        if (u.endsWith('/emotes/manifest.json')) {
+            return { ok: true, json: async () => ({ emotes: { monkaS: 'https://cdn.betterttv.net/emote/b/2x.webp' } }) };
+        }
+        throw new Error(`unexpected fetch ${u}`);
+    };
+    try {
+        _setEmoteManifest({});
+        state.settings.emoteSetId = SET_A;
+        await refreshEmoteManifest();
+        assert.equal(getEmoteUrl('GIGACHAD'), `https://cdn.7tv.app/emote/01F6MZGCNG000255K4X1K7NTHR/2x.webp`,
+            'set A codes join the manifest in CDN form');
+        assert.equal(getEmoteUrl('KEKW'), 'https://cdn.7tv.app/emote/01F61B1440000991F7SWQNMVX7/2x.webp');
+        assert.equal(getEmoteUrl('monkaS'), 'https://cdn.betterttv.net/emote/b/2x.webp', 'builtin still merged');
+
+        state.settings.emoteSetId = SET_B;
+        await refreshEmoteManifest();
+        assert.equal(getEmoteUrl('BLYAT'), 'https://cdn.7tv.app/emote/01HD92YYE8000DW97PFPF49BZG/2x.webp',
+            'set B loads after the id switch');
+        assert.equal(getEmoteUrl('GIGACHAD'), null, 'the previous set is fully dropped, not stacked');
+        assert.equal(getEmoteUrl('monkaS'), 'https://cdn.betterttv.net/emote/b/2x.webp', 'builtin survives the switch');
+    } finally {
+        globalThis.fetch = realFetch;
+        await SillyTavern.libs.localforage.removeItem(`DSComments_7tvSet_${SET_A}`);
+        await SillyTavern.libs.localforage.removeItem(`DSComments_7tvSet_${SET_B}`);
         _setEmoteManifest({});
     }
 });

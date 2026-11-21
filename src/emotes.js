@@ -189,8 +189,25 @@ export function getEmoteUrl(code) {
     return Object.prototype.hasOwnProperty.call(_merged, code) ? _merged[code] : null;
 }
 
-/** Codes the contract may teach the model, sorted. The full pack is taught —
- *  prompt size grows with the user's emote set. */
+// Taught-list ceiling: the user's set codes ride first, anchors fill the rest,
+// and beyond ~12 taught codes the feed measurably turns into bare-emote spam
+// (a live A/B: 52% emote-only, 13% on-topic).
+const TEACH_CAP = 12;
+
+/** Famous anchor codes that fill the taught list under the user's set codes —
+ *  few and mood-distinct. Famous codes the model already knows render without
+ *  being listed, so anchors only seed priors. */
+export const TEACH_ANCHORS = [
+    'KEKW', 'Kappa', 'monkaS', 'FeelsOkayMan', 'peepoHappy', 'WutFace', 'BibleThump', 'EZ',
+];
+
+/** Codes the contract may teach: the user's set codes first (their explicit
+ *  choice, and the same layer the renderer serves), then anchors. Deduped and
+ *  capped; every returned code is present in the merged pack — dead codes are
+ *  never taught. */
 export function getEmoteCodes() {
-    return Object.keys(_merged).sort();
+    const setCodes = _sevenTv ? Object.keys(_sevenTv).sort() : [];
+    const anchors = TEACH_ANCHORS.filter(code =>
+        Object.prototype.hasOwnProperty.call(_merged, code));
+    return [...new Set([...setCodes, ...anchors])].slice(0, TEACH_CAP);
 }
