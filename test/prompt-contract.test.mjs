@@ -95,6 +95,8 @@ test('buildContract teaches the emote code list when provided', () => {
     const withEmotes = buildContract({ emoteCodes: ['FeelsGoodMan', 'monkaS'] });
     assert.match(withEmotes, /REACTION EMOTES/);
     assert.match(withEmotes, /FeelsGoodMan, monkaS/);
+    assert.match(withEmotes, /"emoji": "FeelsGoodMan"/,
+        'the worked mini-example uses a live taught code');
     // media sections and the emote section compose
     const mixed = buildContract({ meme: true, emoteCodes: ['LuL'] });
     assert.match(mixed, /MEME ATTACHMENTS/);

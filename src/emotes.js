@@ -98,7 +98,9 @@ function _parseSevenTvPayload(v) {
         && v.map && typeof v.map === 'object' ? v : null;
 }
 
-/** Shared fetch for the cold path and background revalidation. */
+/** Shared fetch for the cold path and background revalidation. The top-level
+ *  `name` is the per-set alias (data.name is the canonical emote name) — the
+ *  alias is the code that renders in THIS set, so it is the one to map. */
 async function fetchSevenTvSet(setId, signal) {
     const resp = await fetchWithTimeout(SEVEN_TV_SET_URL(setId), { signal, timeoutMs: SEVEN_TV_FETCH_TIMEOUT_MS });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -189,25 +191,28 @@ export function getEmoteUrl(code) {
     return Object.prototype.hasOwnProperty.call(_merged, code) ? _merged[code] : null;
 }
 
-// Taught-list ceiling: the user's set codes ride first, anchors fill the rest,
-// and beyond ~12 taught codes the feed measurably turns into bare-emote spam
-// (a live A/B: 52% emote-only, 13% on-topic).
-const TEACH_CAP = 12;
+// The user's set can hold up to 1000 uploads and most are junk no prior can
+// vouch for (teaching the alphabetically-first codes of a big set once put
+// "AHUI" chips into every feed). Only famous names pass the gate, and 12 per
+// set keeps the taught list bounded no matter how big the set is.
+const SET_TEACH_MAX = 12;
+export const SET_TEACH_DICT = new Set([
+    'KEKW', 'GIGACHAD', 'catJAM', 'catJam', 'SUSSY', 'ICANT', 'popCat', 'NOWAYING',
+    'TheVoices', 'MONKE', 'RAGEY', 'HUH', 'WHAT', 'catKISS', 'o7',
+    'BLYAT', 'BASED',
+    'Clueless', 'Sadge', 'PepeLaugh', 'peepoGiggle', 'peepoLove', 'Pepega',
+    'monkaW', 'Kreygasm', 'PauseChamp', 'PagMan', 'Awareness', 'HYPERS',
+    'Bedge', 'notice', 'WideHardo', 'Pog', 'PogChamp', 'EZClap',
+]);
 
-/** Famous anchor codes that fill the taught list under the user's set codes —
- *  few and mood-distinct. Famous codes the model already knows render without
- *  being listed, so anchors only seed priors. */
-export const TEACH_ANCHORS = [
-    'KEKW', 'Kappa', 'monkaS', 'FeelsOkayMan', 'peepoHappy', 'WutFace', 'BibleThump', 'EZ',
-];
-
-/** Codes the contract may teach: the user's set codes first (their explicit
- *  choice, and the same layer the renderer serves), then anchors. Deduped and
- *  capped; every returned code is present in the merged pack — dead codes are
- *  never taught. */
+/** Codes the contract may teach: the whole built-in pack (curated here —
+ *  quality by construction) plus the user's set codes that match a famous
+ *  name. Every returned code is present in the merged pack, so the model can
+ *  never be taught a dead one. */
 export function getEmoteCodes() {
-    const setCodes = _sevenTv ? Object.keys(_sevenTv).sort() : [];
-    const anchors = TEACH_ANCHORS.filter(code =>
-        Object.prototype.hasOwnProperty.call(_merged, code));
-    return [...new Set([...setCodes, ...anchors])].slice(0, TEACH_CAP);
+    const builtin = _builtin ? Object.keys(_builtin) : [];
+    const setCodes = _sevenTv
+        ? Object.keys(_sevenTv).filter((c) => SET_TEACH_DICT.has(c)).sort().slice(0, SET_TEACH_MAX)
+        : [];
+    return [...new Set([...setCodes, ...builtin])].sort();
 }

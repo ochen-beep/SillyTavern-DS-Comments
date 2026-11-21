@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { state } from '../src/core.js';
-import { _setEmoteManifest, refreshEmoteManifest, getEmoteUrl, getEmoteCodes, TEACH_ANCHORS } from '../src/emotes.js';
+import { _setEmoteManifest, refreshEmoteManifest, getEmoteUrl, getEmoteCodes, SET_TEACH_DICT } from '../src/emotes.js';
 
 beforeEach(() => {
     state.settings = { reactionEmotes: true, emoteSetId: '' };
@@ -40,24 +40,24 @@ test('user 7TV set overrides builtin codes with the same name', () => {
     assert.equal(getEmoteUrl('KEKW'), 'https://cdn.7tv.app/emote/user/2x.webp');
 });
 
-test('getEmoteCodes: user set first, anchors fill, capped — nothing dead taught', () => {
+test('getEmoteCodes: builtin rides whole, set codes pass the famous gate only', () => {
     _setEmoteManifest({
-        builtin: { monkaS: 'u1', NotAnAnchor: 'u2' },
-        sevenTv: { Zeta: 'u3', Alpha: 'u4', KEKW: 'u5' },   // the set overrides the KEKW anchor
+        builtin: { monkaS: 'u1', Kappa: 'u2' },
+        sevenTv: { AHUI: 'u3', GIGACHAD: 'u4', KEKW: 'u5', BLYAT: 'u6' },
         sevenTvSetId: 'set1',
     });
-    assert.deepEqual(getEmoteCodes(), ['Alpha', 'KEKW', 'Zeta', 'monkaS'],
-        'set codes first (sorted), anchors fill after, the set override dedupes the anchor');
-    const bigSet = {};
-    for (let i = 0; i < 30; i++) bigSet[`SetEmote${String(i).padStart(2, '0')}`] = `u${i}`;
-    _setEmoteManifest({ builtin: {}, sevenTv: bigSet, sevenTvSetId: 'set2' });
-    const capped = getEmoteCodes();
-    assert.equal(capped.length, 12, 'the taught list never exceeds the cap');
-    assert.deepEqual(capped, [...capped].sort(), 'set codes stay sorted/deterministic');
-    assert.ok(capped.every(c => c.startsWith('SetEmote')), 'a big set crowds the anchors out');
-    _setEmoteManifest({ builtin: { monkaS: 'u1' } });
-    assert.deepEqual(getEmoteCodes(), ['monkaS'],
-        'no set → anchors only, and an anchor the pack lacks is never taught dead');
+    const codes = getEmoteCodes();
+    assert.ok(codes.includes('GIGACHAD') && codes.includes('KEKW') && codes.includes('BLYAT'),
+        'famous set codes join the palette');
+    assert.ok(!codes.includes('AHUI'), 'junk set codes never get taught');
+    assert.ok(codes.includes('monkaS') && codes.includes('Kappa'), 'builtin pack rides whole');
+    assert.deepEqual(codes, [...codes].sort(), 'deterministic order');
+    const names = [...SET_TEACH_DICT].slice(0, 20);
+    const bigSet = Object.fromEntries(names.map((n, i) => [n, `u${i}`]));
+    _setEmoteManifest({ builtin: { monkaS: 'u1' }, sevenTv: bigSet, sevenTvSetId: 'set2' });
+    const taught = getEmoteCodes();
+    assert.equal(taught.filter(c => names.includes(c)).length, 12,
+        'set contribution is capped — a famous-compilation set cannot bloat the prompt');
     _setEmoteManifest({ builtin: {} });
     assert.deepEqual(getEmoteCodes(), []);
 });
@@ -239,8 +239,9 @@ test('shipped manifest covers the codes the model hallucinates in the wild', () 
     for (const [code, url] of Object.entries(emotes)) {
         assert.match(url, /^https:\/\//, `code ${code} must hotlink over https`);
     }
-    for (const anchor of TEACH_ANCHORS) {
-        assert.ok(emotes[anchor], `taught anchor missing from the shipped pack: ${anchor}`);
+    for (const code of Object.keys(emotes)) {
+        assert.ok(!code.startsWith(':') && !code.endsWith(':'),
+            `colon-edge codes can never render through the chip's colon strip: ${code}`);
     }
 });
 
