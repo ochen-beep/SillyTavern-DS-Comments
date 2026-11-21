@@ -11,6 +11,16 @@
  * (core.js) BEFORE macro substitution.
  */
 
+// The example's reactions are the strongest few-shot signal the model follows
+// (measured live: a unicode example kept unicode reactions dominant even with
+// a pack listed in the emote section). With emotes on, buildContract swaps
+// this block for an emote-first one built from the taught codes.
+const EXAMPLE_REACTIONS_UNICODE = `[
+  {"username": "coder_42", "content": "I can't believe the author just did that", "reactions": [{"emoji": "😭", "count": "12"}, {"emoji": "🐈", "count": "25"}]},
+  {"username": "ghost_reader", "content": "SAME. I had to put my phone down and stare at the wall for a minute", "reply": {"to": "coder_42", "quote": "the author just did that"}, "reactions": [{"emoji": "🙏", "count": "10"}]},
+  {"username": "ALLCAPS_CHAOS", "content": "АХАХАХА ОН ЖЕ ПРОСТО КОТ А НЕ ИМПЕРАТОР", "reactions": [{"emoji": "🤣", "count": "45"}, {"emoji": "💀", "count": "20"}]}
+]`;
+
 export const PROMPT_CONTRACT = `#Chat Commentary
 
 Generate exactly {{count}} chat messages reacting to the current scene. Use the EXACT format below.
@@ -18,11 +28,7 @@ Generate exactly {{count}} chat messages reacting to the current scene. Use the 
 ## OUTPUT FORMAT — respond with ONLY a JSON array. No markdown, no code blocks, no extra text.
 
 Example (note: reply's "content" is a real message, and its "quote" is copied from the target's message):
-[
-  {"username": "coder_42", "content": "I can't believe the author just did that", "reactions": [{"emoji": "😭", "count": "12"}, {"emoji": "🐈", "count": "25"}]},
-  {"username": "ghost_reader", "content": "SAME. I had to put my phone down and stare at the wall for a minute", "reply": {"to": "coder_42", "quote": "the author just did that"}, "reactions": [{"emoji": "🙏", "count": "10"}]},
-  {"username": "ALLCAPS_CHAOS", "content": "АХАХАХА ОН ЖЕ ПРОСТО КОТ А НЕ ИМПЕРАТОР", "reactions": [{"emoji": "🤣", "count": "45"}, {"emoji": "💀", "count": "20"}]}
-]
+${EXAMPLE_REACTIONS_UNICODE}
 
 ## FORMAT RULES
 
@@ -93,10 +99,25 @@ const oneMediaFieldRule = (names) => `
 - A message carries at most ONE media field (${names.map(n => `"${n}"`).join(', ')})`;
 
 /**
+ * Emote-first example reactions: the main example's five unicode reactions
+ * swap for taught codes (cycled — the list always has at least one member).
+ * @param {string[]} codes
+ * @returns {string}
+ */
+function emoteExampleReactions(codes) {
+    const at = (i) => codes[i % codes.length];
+    return `[
+  {"username": "coder_42", "content": "I can't believe the author just did that", "reactions": [{"emoji": "${at(0)}", "count": "12"}, {"emoji": "${at(1)}", "count": "25"}]},
+  {"username": "ghost_reader", "content": "SAME. I had to put my phone down and stare at the wall for a minute", "reply": {"to": "coder_42", "quote": "the author just did that"}, "reactions": [{"emoji": "${at(2)}", "count": "10"}]},
+  {"username": "ALLCAPS_CHAOS", "content": "АХАХАХА ОН ЖЕ ПРОСТО КОТ А НЕ ИМПЕРАТОР", "reactions": [{"emoji": "${at(3)}", "count": "45"}, {"emoji": "${at(4)}", "count": "20"}]}
+]`;
+}
+
+/**
  * Reaction emotes: teaches the built-in pack plus famous codes from the
- * user's set (getEmoteCodes filters the set layer). A worked mini-example
- * with a live code anchors the format — the contract's main example uses
- * unicode reactions, and models copy examples harder than written rules.
+ * user's set (getEmoteCodes filters the set layer). Pack codes are the
+ * DEFAULT reaction form; plain unicode emoji are demoted to the rare
+ * exception — the user reads a Twitch-style feed, not an emoji one.
  * @param {string[]} codes
  * @returns {string}
  */
@@ -105,8 +126,9 @@ function emoteSection(codes) {
 ## REACTION EMOTES
 
 - In "reactions", "emoji" may be a Twitch-style emote CODE instead of a unicode emoji, e.g.: ${codes.join(', ')}
-- Example: "reactions": [{"emoji": "${codes[0]}", "count": "12"}, {"emoji": "😭", "count": "34"}]
-- These are Twitch/Discord-style meme emotes — use them for meme moods (cope, hype, cringe, dread, smug); keep plain unicode emoji for simple emotions
+- Example: "reactions": [{"emoji": "${codes[0]}", "count": "12"}]
+- React with pack codes by default — plain unicode emoji are the last resort, only for moods no code covers (laugh → KEKW/LuL/ICANT, sad → BibleThump/FeelsBadMan, shock/cringe → WutFace/monkaS, hype → peepoHappy/PartyParrot, smug → EZ); never post the unicode twin of a code the pack already has
+- These are Twitch/Discord-style meme emotes — use them for meme moods (cope, hype, cringe, dread, smug)
 - Other well-known emote codes render as pictures too; unknown or invented ones silently show as text
 - Emotes are reactions, not message text — "content" still carries the words`;
 }
@@ -122,7 +144,13 @@ function emoteSection(codes) {
  * @returns {string}
  */
 export function buildContract({ gif = false, sticker = false, meme = false, gifMax = 2, stickerMax = 1, memeMax = 1, emoteCodes = null } = {}) {
-    const sections = [PROMPT_CONTRACT];
+    // With emotes on the main example's reactions go emote-first — the example
+    // outweighs any written rule, so the few-shot signal must point the same
+    // way as the REACTION EMOTES section.
+    const base = Array.isArray(emoteCodes) && emoteCodes.length > 0
+        ? PROMPT_CONTRACT.replace(EXAMPLE_REACTIONS_UNICODE, () => emoteExampleReactions(emoteCodes))
+        : PROMPT_CONTRACT;
+    const sections = [base];
     const mediaNames = [];
     if (gif && gifMax > 0) { sections.push(gifSection(gifMax)); mediaNames.push('gif'); }
     if (sticker && stickerMax > 0) { sections.push(stickerSection(stickerMax)); mediaNames.push('sticker'); }

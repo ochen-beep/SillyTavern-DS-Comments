@@ -103,6 +103,14 @@ test('buildContract teaches the emote code list when provided', () => {
     assert.match(mixed, /REACTION EMOTES/);
 });
 
+test('with emotes on the main example goes emote-first', () => {
+    const withEmotes = buildContract({ emoteCodes: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Echo'] });
+    assert.match(withEmotes, /"content": "I can't believe the author just did that", "reactions": \[\{"emoji": "Alpha"/,
+        'the main example leads with a taught code');
+    assert.ok(!withEmotes.includes('🐈') && !withEmotes.includes('🙏') && !withEmotes.includes('💀') && !withEmotes.includes('😭'),
+        'unicode reactions leave the example entirely when the pack is on');
+});
+
 test('buildContract teaches per-type caps and omits sections capped at 0', () => {
     const two = buildContract({ gif: true, gifMax: 5 });
     assert.match(two, /at most 5 GIFs per generation/);
