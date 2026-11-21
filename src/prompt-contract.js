@@ -128,6 +128,7 @@ function emoteSection(codes) {
 - In "reactions", "emoji" may be a Twitch-style emote CODE instead of a unicode emoji, e.g.: ${codes.join(', ')}
 - Example: "reactions": [{"emoji": "${codes[0]}", "count": "12"}]
 - React with pack codes by default — plain unicode emoji are the last resort, only for moods no code covers (laugh → KEKW/LuL/ICANT, sad → BibleThump/FeelsBadMan, shock/cringe → WutFace/monkaS, hype → peepoHappy/PartyParrot, smug → EZ); never post the unicode twin of a code the pack already has
+- VARY the codes across the feed — the audience notices reruns
 - These are Twitch/Discord-style meme emotes — use them for meme moods (cope, hype, cringe, dread, smug)
 - Other well-known emote codes render as pictures too; unknown or invented ones silently show as text
 - Emotes are reactions, not message text — "content" still carries the words`;

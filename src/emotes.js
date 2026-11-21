@@ -191,11 +191,13 @@ export function getEmoteUrl(code) {
     return Object.prototype.hasOwnProperty.call(_merged, code) ? _merged[code] : null;
 }
 
-// The user's set can hold up to 1000 uploads and most are junk no prior can
-// vouch for (teaching the alphabetically-first codes of a big set once put
-// "AHUI" chips into every feed). Only famous names pass the gate, and 12 per
-// set keeps the taught list bounded no matter how big the set is.
-const SET_TEACH_MAX = 12;
+// The user's set can hold up to 1000 uploads. A famous-name floor is stable
+// across generations; the REST of the set contributes a rotating stride-slice
+// (re-rolled per generation) so consecutive feeds see different corners of a
+// big set — a fixed famous-only palette once made every feed converge on the
+// same handful of names.
+const SET_FAMOUS_MAX = 8;
+const SET_ROTATE_MAX = 12;
 export const SET_TEACH_DICT = new Set([
     'KEKW', 'GIGACHAD', 'catJAM', 'catJam', 'SUSSY', 'ICANT', 'popCat', 'NOWAYING',
     'TheVoices', 'MONKE', 'RAGEY', 'HUH', 'WHAT', 'catKISS', 'o7',
@@ -206,13 +208,27 @@ export const SET_TEACH_DICT = new Set([
 ]);
 
 /** Codes the contract may teach: the whole built-in pack (curated here —
- *  quality by construction) plus the user's set codes that match a famous
- *  name. Every returned code is present in the merged pack, so the model can
- *  never be taught a dead one. */
-export function getEmoteCodes() {
+ *  quality by construction), the set's famous names as a stable floor, and a
+ *  rotating stride-slice over the rest of the set. The rotating slice LEADS
+ *  the array — the contract's example copies its first codes, and leading
+ *  with the per-generation slice is what makes the model actually use it
+ *  instead of the famous anchors. `seed` pins the roll for tests; every
+ *  returned code is present in the merged pack — dead codes are never
+ *  taught. */
+export function getEmoteCodes(seed = Date.now()) {
     const builtin = _builtin ? Object.keys(_builtin) : [];
-    const setCodes = _sevenTv
-        ? Object.keys(_sevenTv).filter((c) => SET_TEACH_DICT.has(c)).sort().slice(0, SET_TEACH_MAX)
-        : [];
-    return [...new Set([...setCodes, ...builtin])].sort();
+    const setCodes = _sevenTv ? Object.keys(_sevenTv) : [];
+    const famous = setCodes.filter((c) => SET_TEACH_DICT.has(c)).sort().slice(0, SET_FAMOUS_MAX);
+    const rest = setCodes.filter((c) => !SET_TEACH_DICT.has(c));
+    const rotated = [];
+    if (rest.length) {
+        const take = Math.min(SET_ROTATE_MAX, rest.length);
+        const stride = rest.length / take;
+        let idx = seed % rest.length;
+        for (let i = 0; i < take; i++) {
+            rotated.push(rest[Math.floor(idx) % rest.length]);
+            idx += stride;
+        }
+    }
+    return [...new Set([...rotated, ...famous, ...builtin])];
 }

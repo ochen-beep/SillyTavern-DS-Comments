@@ -40,26 +40,31 @@ test('user 7TV set overrides builtin codes with the same name', () => {
     assert.equal(getEmoteUrl('KEKW'), 'https://cdn.7tv.app/emote/user/2x.webp');
 });
 
-test('getEmoteCodes: builtin rides whole, set codes pass the famous gate only', () => {
+test('getEmoteCodes: builtin whole, famous floor, rotating slice over the rest', () => {
+    const restNames = Array.from({ length: 300 }, (_, i) => `Junk${String(i).padStart(3, '0')}`);
+    const famousNames = ['GIGACHAD', 'KEKW', 'BLYAT'];
     _setEmoteManifest({
         builtin: { monkaS: 'u1', Kappa: 'u2' },
-        sevenTv: { AHUI: 'u3', GIGACHAD: 'u4', KEKW: 'u5', BLYAT: 'u6' },
+        sevenTv: Object.fromEntries([...restNames, ...famousNames].map((n, i) => [n, `u${i}`])),
         sevenTvSetId: 'set1',
     });
-    const codes = getEmoteCodes();
-    assert.ok(codes.includes('GIGACHAD') && codes.includes('KEKW') && codes.includes('BLYAT'),
-        'famous set codes join the palette');
-    assert.ok(!codes.includes('AHUI'), 'junk set codes never get taught');
-    assert.ok(codes.includes('monkaS') && codes.includes('Kappa'), 'builtin pack rides whole');
-    assert.deepEqual(codes, [...codes].sort(), 'deterministic order');
-    const names = [...SET_TEACH_DICT].slice(0, 20);
-    const bigSet = Object.fromEntries(names.map((n, i) => [n, `u${i}`]));
-    _setEmoteManifest({ builtin: { monkaS: 'u1' }, sevenTv: bigSet, sevenTvSetId: 'set2' });
-    const taught = getEmoteCodes();
-    assert.equal(taught.filter(c => names.includes(c)).length, 12,
-        'set contribution is capped — a famous-compilation set cannot bloat the prompt');
+    const codes = getEmoteCodes(12345);
+    assert.ok(famousNames.every(n => codes.includes(n)), 'famous floor is stable across generations');
+    assert.ok(codes.includes('monkaS') && codes.includes('Kappa'), 'builtin rides whole');
+    assert.equal(codes.filter(c => restNames.includes(c)).length, 12,
+        'the rotating slice is capped — a big set cannot bloat the prompt');
+    const firstRotated = codes.findIndex(c => restNames.includes(c));
+    assert.equal(firstRotated, 0, 'the rotating slice leads the palette');
+    assert.ok(codes.slice(0, 12).every(c => restNames.includes(c)),
+        'all twelve slots before the floor are the rotating slice');
+    assert.deepEqual(getEmoteCodes(12345), codes, 'a pinned seed reproduces the roll');
+    const union = new Set();
+    for (let s = 0; s < 30; s++) {
+        for (const c of getEmoteCodes(s)) if (restNames.includes(c)) union.add(c);
+    }
+    assert.ok(union.size > 12, 'consecutive generations must see different corners of the set');
     _setEmoteManifest({ builtin: {} });
-    assert.deepEqual(getEmoteCodes(), []);
+    assert.deepEqual(getEmoteCodes(1), []);
 });
 
 test('refreshEmoteManifest: reacts to settings and fetches the 7TV set', async () => {
