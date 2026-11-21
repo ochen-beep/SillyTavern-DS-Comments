@@ -11,6 +11,8 @@ import { state, flushSettings, debounce, tr } from '../core.js';
 import { whenSendFormReady } from './dom-ready.js';
 import { normalizeDesktopGeometry } from './window-geometry.js';
 import { applyPendingFeedScrollReset } from './feed-controller.js';
+import { closeQsMenu } from './quickmenu.js';
+import { closeTypographyPopover } from './typography.js';
 
 // ── Module-owned runtime handles (teardown targets) ──
 let _viewportResizeHandler = null;
@@ -341,6 +343,12 @@ function initDrag() {
         if (isMobileViewport()) return;
         // Don't drag when clicking buttons inside the header
         if (e.target.closest('button')) return;
+        // Popovers anchor to the header's viewport position captured at open
+        // time; a drag moves the window without firing any event they listen
+        // to (no click is synthesized after a moved mouseup), so they would
+        // hang in mid-air. Light-dismiss them at drag start.
+        closeQsMenu();
+        closeTypographyPopover();
         const pt = e.touches ? e.touches[0] : e;
         const rect = bar.getBoundingClientRect();
         startX = pt.clientX; startY = pt.clientY;
