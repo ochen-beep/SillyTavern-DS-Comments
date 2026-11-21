@@ -243,6 +243,9 @@ export function updateMediaVisibility() {
     // memes: the per-generation cap rides the feature toggle
     const memeMaxGroup = document.getElementById('dsc_meme_max_group');
     if (memeMaxGroup) memeMaxGroup.hidden = state.settings.mediaMemes !== true;
+    // stickers: same pattern — the cap is meaningless while stickers are off
+    const stickerMax = document.getElementById('dsc_sticker_max');
+    if (stickerMax) stickerMax.hidden = state.settings.mediaStickers !== true;
 }
 
 async function syncMediaKeyFields() {
@@ -294,7 +297,9 @@ export async function populateProfiles() {
         const profiles = await getProfiles();
         if (req !== _profilesReq) return;   // superseded by a newer refresh
         // Details come from the same local Connection Manager list as the names, so
-        // enrich every option at once: "Name · API · Model".
+        // enrich every option at once: "Name · Model". The api mode (custom,
+        // openai…) is host plumbing jargon — the profile name and the model
+        // are the only facts a user needs here.
         // Order is preserved: collect labels first, then build <option>.
         const enriched = await Promise.all(profiles.map(async (p) => {
             const value = p.id || p.name;
@@ -302,12 +307,8 @@ export async function populateProfiles() {
             try {
                 const d = await getProfileDetails(value);
                 if (d) {
-                    const parts = [];
-                    const api = d.api || '';
-                    if (api) parts.push(String(api).toUpperCase());
                     const model = d.model || d.modelName || d.model_name || d.settings?.model || '';
-                    if (model) parts.push(String(model));
-                    if (parts.length) label = `${p.name} · ${parts.join(' · ')}`;
+                    if (model) label = `${p.name} · ${model}`;
                 }
             } catch { /* profile without data — keep only the name */ }
             if (req !== _profilesReq) return null;   // stale — discard

@@ -664,6 +664,8 @@ export function handleSettingsChange(el) {
     if (el.id === 'dsc_jb_enable') syncSettingsSections();
     // reaction emotes: the 7TV set-id field rides this toggle
     if (el.id === 'dsc_reaction_emotes') syncSettingsSections();
+    // stickers: the per-generation cap rides the feature toggle
+    if (el.id === 'dsc_media_stickers') syncSettingsSections();
     if (el.id === 'dsc_sound_enable') {
         document.getElementById('dsc_sound_body').hidden = !el.checked;
         const volume = document.getElementById('dsc_sound_volume');
